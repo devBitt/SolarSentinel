@@ -167,6 +167,89 @@ router.get("/metrics", (_req, res) => {
   });
 });
 
+/* ── NOAA 7-day flare archive cache (5-minute TTL) ──────────────────────── */
+const NOAA_FLARES_URL = "https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7day.json";
+let noaaFlareCache: { payload: unknown; ts: number } | null = null;
+
+// GET /api/events/noaa-archive — real NOAA SWPC 7-day flare catalog
+router.get("/events/noaa-archive", async (_req, res) => {
+  try {
+    const now = Date.now();
+    if (noaaFlareCache && now - noaaFlareCache.ts < 300_000) {
+      res.json(noaaFlareCache.payload);
+      return;
+    }
+    const raw: Array<{
+      event_date: string;
+      start_time: string;
+      peak_time: string;
+      end_time: string;
+      goes_class: string;
+      peak_xrlong: number;
+      peak_xrshort: number;
+      noaa_active_region: number | null;
+    }> = await fetch(NOAA_FLARES_URL).then(r => r.json());
+
+    const events = raw.map(e => ({
+      id: `NOAA-${e.start_time.replace(/\D/g, "").slice(0, 12)}`,
+      start_time: e.start_time,
+      peak_time: e.peak_time,
+      end_time: e.end_time,
+      goes_class: e.goes_class,
+      peak_solexs_flux: e.peak_xrlong ?? null,
+      peak_hel1os_flux: e.peak_xrshort ?? null,
+      duration_minutes: e.start_time && e.end_time
+        ? Math.round((new Date(e.end_time).getTime() - new Date(e.start_time).getTime()) / 60000)
+        : null,
+      noaa_active_region: e.noaa_active_region,
+      source: "NOAA SWPC",
+    }));
+
+    const payload = { events, count: events.length, source: "NOAA SWPC GOES Primary", fetched_at: new Date().toISOString() };
+    noaaFlareCache = { payload, ts: now };
+    res.json(payload);
+  } catch (err) {
+    res.status(502).json({ error: "Failed to fetch NOAA flare archive" });
+  }
+});
+
+/* ── Multi-format CSV column detection for upload ────────────────────────── */
+function findCol(headers: string[], patterns: string[]): number {
+  return headers.findIndex(h => patterns.some(p => h.includes(p)));
+}
+
+function detectColumnMapping(headers: string[]): {
+  tsIdx: number; softIdx: number; hardIdx: number; format: string
+} | null {
+  const h = headers.map(x => x.toLowerCase().trim().replace(/[\s\-\.]+/g, "_"));
+
+  // Priority order: most specific first
+  const formats: Array<{ name: string; ts: string[]; soft: string[]; hard: string[] }> = [
+    // ISSDC SoLEXS official format
+    { name: "ISSDC SoLEXS", ts: ["time_utc", "ut_time", "utc"], soft: ["solexs", "ch1", "channel_1", "1_30kev", "soft_xray"], hard: ["hel1os", "ch2", "channel_2", "10_150kev", "hard_xray"] },
+    // GOES cleaned CSV (xrlong/xrshort)
+    { name: "GOES Cleaned", ts: ["time_tag", "timestamp", "time"], soft: ["xrlong", "flux_long", "1_8", "long"], hard: ["xrshort", "flux_short", "0_5", "short"] },
+    // Generic / our own export format
+    { name: "SolarSentinel", ts: ["timestamp", "time", "date", "epoch"], soft: ["solexs", "soft", "ch1"], hard: ["hel1os", "hard", "ch2"] },
+    // HEK / CDAW catalogue  
+    { name: "HEK/CDAW", ts: ["event_starttime", "start_time", "time_start", "start"], soft: ["flux", "intensity", "b_flux"], hard: ["hxr", "hard"] },
+  ];
+
+  for (const fmt of formats) {
+    const tsIdx   = findCol(h, fmt.ts);
+    const softIdx = findCol(h, fmt.soft);
+    const hardIdx = findCol(h, fmt.hard);
+    if (tsIdx !== -1 && softIdx !== -1 && hardIdx !== -1) {
+      return { tsIdx, softIdx, hardIdx, format: fmt.name };
+    }
+  }
+  // Last-resort: columns by position (3-column file: time, soft, hard)
+  if (h.length >= 3) {
+    return { tsIdx: 0, softIdx: 1, hardIdx: 2, format: "Positional (auto)" };
+  }
+  return null;
+}
+
 // POST /api/upload — upload CSV for processing
 router.post("/upload", upload.single("file"), (req, res) => {
   const file = req.file;
@@ -176,37 +259,42 @@ router.post("/upload", upload.single("file"), (req, res) => {
   }
 
   try {
-    const csv = file.buffer.toString("utf-8");
-    const lines = csv.split("\n").filter(l => l.trim());
+    const csv = file.buffer.toString("utf-8").replace(/\r\n/g, "\n");
+    // Skip comment lines (ISSDC files start with #)
+    const lines = csv.split("\n").filter(l => l.trim() && !l.startsWith("#"));
     if (lines.length < 2) {
       res.status(400).json({ error: "CSV must have header + at least one data row" });
       return;
     }
 
-    const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/\s+/g, "_"));
-    const tsIdx = headers.findIndex(h => h === "timestamp");
-    const softIdx = headers.findIndex(h => h.includes("solexs"));
-    const hardIdx = headers.findIndex(h => h.includes("hel1os"));
+    const rawHeaders = lines[0].split(",");
+    const mapping = detectColumnMapping(rawHeaders);
 
-    if (tsIdx === -1 || softIdx === -1 || hardIdx === -1) {
-      res.status(400).json({ error: "CSV must have columns: timestamp, solexs_flux, hel1os_flux" });
+    if (!mapping) {
+      const cols = rawHeaders.map(h => h.trim()).join(", ");
+      res.status(400).json({
+        error: `Could not map columns. Found: [${cols}]. Need timestamp, soft-X-ray, and hard-X-ray columns.`,
+        hint: "Accepted column names: timestamp/time_utc/time_tag, solexs_flux/ch1/xrlong, hel1os_flux/ch2/xrshort",
+      });
       return;
     }
 
+    const { tsIdx, softIdx, hardIdx, format: detectedFormat } = mapping;
     const rawRows: Array<{ timestamp: string; solexs_flux: number; hel1os_flux: number }> = [];
 
     for (let i = 1; i < lines.length; i++) {
       const cols = lines[i].split(",");
-      if (cols.length < 3) continue;
-      const ts = cols[tsIdx]?.trim();
+      const ts   = cols[tsIdx]?.trim();
       const soft = parseFloat(cols[softIdx]?.trim() ?? "");
       const hard = parseFloat(cols[hardIdx]?.trim() ?? "");
-      if (!ts || isNaN(soft) || isNaN(hard)) continue;
-      rawRows.push({ timestamp: ts, solexs_flux: soft, hel1os_flux: hard });
+      if (!ts || isNaN(soft) || isNaN(hard) || soft <= 0 || hard <= 0) continue;
+      // Ensure ISO8601 — if bare date/time, append UTC marker
+      const isoTs = /^\d{4}-\d{2}-\d{2}T/.test(ts) ? ts : ts.replace(" ", "T") + (ts.includes("Z") ? "" : "Z");
+      rawRows.push({ timestamp: isoTs, solexs_flux: soft, hel1os_flux: hard });
     }
 
     if (rawRows.length === 0) {
-      res.status(400).json({ error: "No valid rows found in CSV" });
+      res.status(400).json({ error: "No valid data rows found in CSV — check that flux values are numeric and positive" });
       return;
     }
 
@@ -221,6 +309,12 @@ router.post("/upload", upload.single("file"), (req, res) => {
       status: "ok",
       rows: rawRows.length,
       events_detected: events.length,
+      detected_format: detectedFormat,
+      columns_mapped: {
+        timestamp: rawHeaders[tsIdx]?.trim(),
+        soft_xray: rawHeaders[softIdx]?.trim(),
+        hard_xray: rawHeaders[hardIdx]?.trim(),
+      },
     });
   } catch (err) {
     res.status(400).json({ error: "Failed to parse CSV" });
