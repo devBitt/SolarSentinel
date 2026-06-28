@@ -75,6 +75,8 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "react-dropzone": "^15.0.0"
+    "@types/three": "^0.185.0",
+    "react-dropzone": "^15.0.0",
+    "three": "^0.185.0"
   }
 }

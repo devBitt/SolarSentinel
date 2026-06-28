@@ -6,6 +6,7 @@ import { FeaturesStrip } from "@/components/dashboard/FeaturesStrip";
 import { MissionContextPanel } from "@/components/dashboard/MissionContextPanel";
 import { GOESReferenceCard } from "@/components/dashboard/GOESReferenceCard";
 import { ReplayControls } from "@/components/dashboard/ReplayControls";
+import { SolarGlobePanel } from "@/components/dashboard/SolarGlobe";
 import { useGetDataStream, useGetForecast, useGetLatestFeatures, getGetDataStreamQueryKey, useGetFlareEvents } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
@@ -133,6 +134,10 @@ export default function Dashboard() {
           </div>
 
         </div>
+
+        <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="mt-6">
+          <SolarGlobePanel events={eventsData?.events ?? []} />
+        </motion.div>
       </main>
     </div>
   );
