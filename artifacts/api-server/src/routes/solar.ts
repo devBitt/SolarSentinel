@@ -12,7 +12,66 @@ import {
   setProcessedData,
   setFlareEvents,
   setReplayIndex,
+  type FluxDataPoint,
 } from "../lib/solarData";
+
+/* ── GOES-18 live data cache (90-second TTL) ───────────────────────────── */
+const GOES_XRAY_URL = "https://services.swpc.noaa.gov/json/goes/primary/xrays-1-day.json";
+let goesCache: { payload: unknown; ts: number } | null = null;
+
+async function fetchGoesLive() {
+  const now = Date.now();
+  if (goesCache && now - goesCache.ts < 90_000) return goesCache.payload;
+
+  const raw: Array<{ time_tag: string; satellite: number; flux: number; energy: string }> =
+    await fetch(GOES_XRAY_URL).then(r => r.json());
+
+  // Pair long (0.1-0.8nm ≈ SoLEXS soft) and short (0.05-0.4nm ≈ HEL1OS hard) by minute
+  const softMap = new Map<string, number>();
+  const hardMap = new Map<string, number>();
+  raw.forEach(row => {
+    const min = row.time_tag.slice(0, 16); // "2026-06-28T14:41"
+    if (row.energy === "0.1-0.8nm")  softMap.set(min, row.flux);
+    if (row.energy === "0.05-0.4nm") hardMap.set(min, row.flux);
+  });
+
+  const keys = [...softMap.keys()].sort();
+  const rawRows = keys
+    .filter(k => softMap.has(k) && hardMap.has(k))
+    .map(k => ({
+      timestamp: `${k}:00Z`,
+      solexs_flux: Math.max(softMap.get(k)!, 1e-9),
+      hel1os_flux: Math.max(hardMap.get(k)!, 1e-9),
+    }));
+
+  const processed = computeFeatures(rawRows);
+  const events    = detectFlares(processed);
+  const latest    = processed[processed.length - 1] as FluxDataPoint | undefined;
+  const forecast  = computeForecast(processed, processed.length - 1);
+
+  const payload = {
+    source: "GOES-18",
+    satellite: 18,
+    bands: { soft: "0.1-0.8 nm (≈ SoLEXS)", hard: "0.05-0.4 nm (≈ HEL1OS)" },
+    data: processed,
+    events,
+    forecast,
+    features: latest ? {
+      timestamp: latest.timestamp,
+      solexs_flux: latest.solexs_flux,
+      hel1os_flux: latest.hel1os_flux,
+      flux_ratio: latest.flux_ratio,
+      spectral_hardness: latest.spectral_hardness,
+      solexs_deriv: latest.solexs_deriv,
+      rolling_mean: latest.rolling_mean,
+      rolling_var: latest.rolling_var,
+    } : null,
+    last_updated: new Date().toISOString(),
+  };
+
+  goesCache = { payload, ts: now };
+  return payload;
+}
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -75,6 +134,16 @@ router.get("/features/latest", (req, res) => {
     rolling_mean: row.rolling_mean,
     rolling_var: row.rolling_var,
   });
+});
+
+// GET /api/data/goes-live — real GOES-18 X-ray data + detection pipeline
+router.get("/data/goes-live", async (_req, res) => {
+  try {
+    const payload = await fetchGoesLive();
+    res.json(payload);
+  } catch (err) {
+    res.status(502).json({ error: "Failed to fetch GOES-18 data from NOAA" });
+  }
 });
 
 // POST /api/replay/reset

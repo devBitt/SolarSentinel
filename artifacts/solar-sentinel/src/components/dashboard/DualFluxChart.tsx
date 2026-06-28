@@ -1,5 +1,5 @@
-import { useGetDataFull, useGetDataStream } from "@workspace/api-client-react";
-import { useEffect, useState, useMemo } from "react";
+import { useGetDataFull } from "@workspace/api-client-react";
+import { useMemo } from "react";
 import { 
   ComposedChart, 
   Line, 
@@ -14,41 +14,48 @@ import { Card } from "@/components/ui/card";
 import { formatSI } from "@/utils/formatFlux";
 import { format, parseISO } from "date-fns";
 
-export function DualFluxChart() {
-  const { data: fullData } = useGetDataFull();
-  const [streamData, setStreamData] = useState<any[]>([]);
+interface FluxPoint {
+  timestamp: string;
+  solexs_flux: number;
+  hel1os_flux: number;
+  [key: string]: unknown;
+}
 
-  // We rely on full data initially, and in a real setup we'd append stream data.
-  // For the mockup, we will just display the stream data or full data as it comes.
-  
-  const chartData = useMemo(() => {
-    if (fullData?.data) {
-      return fullData.data.map(d => ({
-        ...d,
-        time: format(parseISO(d.timestamp), "HH:mm"),
-        rawTime: new Date(d.timestamp).getTime()
-      })).slice(-200); // show last 200 points for performance
-    }
-    return [];
-  }, [fullData]);
+interface DualFluxChartProps {
+  overrideData?: FluxPoint[];
+  sourceLabel?: string;
+}
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-popover border border-border p-3 rounded shadow-xl">
-          <p className="text-muted-foreground font-mono text-xs mb-2">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-2 font-mono text-sm">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-              <span className="text-foreground">{entry.name}:</span>
-              <span className="text-foreground font-bold">{formatSI(entry.value)}</span>
-            </div>
-          ))}
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-popover border border-border p-3 rounded shadow-xl">
+      <p className="text-muted-foreground font-mono text-xs mb-2">{label}</p>
+      {payload.map((entry: any, i: number) => (
+        <div key={i} className="flex items-center gap-2 font-mono text-sm">
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+          <span className="text-foreground">{entry.name}:</span>
+          <span className="text-foreground font-bold">{formatSI(entry.value)}</span>
         </div>
-      );
-    }
-    return null;
-  };
+      ))}
+    </div>
+  );
+};
+
+export function DualFluxChart({ overrideData, sourceLabel }: DualFluxChartProps) {
+  const { data: fullData } = useGetDataFull({ query: { enabled: !overrideData } });
+
+  const chartData = useMemo(() => {
+    const source = overrideData ?? fullData?.data ?? [];
+    return source.map((d: FluxPoint) => ({
+      ...d,
+      time: format(parseISO(d.timestamp), "HH:mm"),
+      rawTime: new Date(d.timestamp).getTime(),
+    })).slice(-200);
+  }, [overrideData, fullData]);
+
+  const softLabel = sourceLabel ? `${sourceLabel} Long (≈ SoLEXS)` : "SoLEXS (Soft)";
+  const hardLabel = sourceLabel ? `${sourceLabel} Short (≈ HEL1OS)` : "HEL1OS (Hard)";
 
   return (
     <Card className="p-4 w-full h-[400px] border-border shadow-[0_0_20px_rgba(0,212,255,0.05)] bg-card flex flex-col">
@@ -57,11 +64,11 @@ export function DualFluxChart() {
         <div className="flex gap-4">
           <div className="flex items-center gap-2">
             <span className="w-3 h-1 bg-secondary rounded" />
-            <span className="text-xs font-mono text-muted-foreground">SoLEXS (Soft)</span>
+            <span className="text-xs font-mono text-muted-foreground">{softLabel}</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-3 h-1 bg-primary rounded" />
-            <span className="text-xs font-mono text-muted-foreground">HEL1OS (Hard)</span>
+            <span className="text-xs font-mono text-muted-foreground">{hardLabel}</span>
           </div>
         </div>
       </div>
@@ -99,7 +106,6 @@ export function DualFluxChart() {
             />
             <Tooltip content={<CustomTooltip />} />
             
-            {/* GOES Reference Lines */}
             <ReferenceLine y={1e-4} yAxisId="soft" stroke="#9333EA" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'X-Class', fill: '#9333EA', fontSize: 10, fontFamily: 'Space Grotesk' }} />
             <ReferenceLine y={1e-5} yAxisId="soft" stroke="#EF4444" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'M-Class', fill: '#EF4444', fontSize: 10, fontFamily: 'Space Grotesk' }} />
             <ReferenceLine y={1e-6} yAxisId="soft" stroke="#F59E0B" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'C-Class', fill: '#F59E0B', fontSize: 10, fontFamily: 'Space Grotesk' }} />
