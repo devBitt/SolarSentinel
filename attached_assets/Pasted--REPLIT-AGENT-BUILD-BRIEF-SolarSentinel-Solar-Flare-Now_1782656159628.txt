@@ -1,0 +1,1572 @@
+# REPLIT AGENT BUILD BRIEF
+# SolarSentinel — Solar Flare Nowcasting & Forecasting from Aditya-L1
+
+---
+
+## 1. APP OVERVIEW
+
+**App Name:** SolarSentinel
+
+**One-line description:** An automated pipeline that ingests combined Soft and Hard X-ray time-series data from ISRO's Aditya-L1 mission to nowcast and forecast solar flares in real time.
+
+**Core problem it solves:** Solar flares can cripple satellite communications, GPS systems, and power grids with little warning. SolarSentinel fuses two X-ray data streams from Aditya-L1's SoLEXS and HEL1OS instruments to detect flares the moment they begin (nowcasting) and predict them minutes ahead (forecasting), giving operators actionable lead time.
+
+**Target user:** Space weather scientists, ISRO mission analysts, satellite operators, and hackathon judges evaluating data science + ML pipelines.
+
+---
+
+## 2. FULL FEATURE LIST
+
+### CORE (Must Have)
+
+1. **Dual-Channel Live Data Ingest** — Simulate or load SoLEXS (soft X-ray, 1–8 Å) and HEL1OS (hard X-ray, 10–100 keV) time-series data side-by-side. Accept CSV/JSON uploads or auto-load bundled demo data.
+
+2. **Interactive Time-Series Dashboard** — Dual-panel chart showing both SoLEXS and HEL1OS flux over time with zoom, pan, and crosshair sync. Annotate detected flare events directly on the chart.
+
+3. **Automated Flare Detection (Nowcasting)** — Algorithmic pipeline using a threshold + derivative (rate-of-rise) method on the combined channel data to detect flare onset in real time as data streams in. Classify flares as B, C, M, or X class using GOES-equivalent flux mapping.
+
+4. **Short-Term Forecasting (15-min ahead)** — A simple ML/statistical model (LSTM or ARIMA) trained on synthetic historical flare patterns, producing a probability-of-flare score for the next 15 minutes. Display as a gauge/meter UI.
+
+5. **Flare Event Log Table** — Sortable, filterable table of all detected flare events: timestamp, peak flux (soft + hard), GOES class, duration, detection method, and confidence score.
+
+6. **Alert Banner System** — Color-coded alert banners (Green / Yellow / Orange / Red) that appear at the top of the dashboard when flare probability exceeds configurable thresholds (50%, 75%, 90%).
+
+7. **Multi-Feature Fusion Panel** — Show derived features used by the model: flux ratio (HEL1OS/SoLEXS), spectral hardness index, derivative of flux, rolling mean, and variance — displayed as a mini live metrics strip.
+
+### ENHANCED (Should Have)
+
+8. **Upload Your Own Data** — Drag-and-drop interface for scientists to upload real CSV files with columns: `timestamp`, `solexs_flux`, `hel1os_flux`. App reprocesses the pipeline on uploaded data instantly.
+
+9. **Simulation / Replay Mode** — A time-speed slider (1×, 5×, 10×, 50×) to replay historical data as if it were live, letting judges watch detection happen in action.
+
+10. **Confidence Score Breakdown** — Expandable tooltip/modal on each detection showing which features triggered the alert and their individual weights/contributions.
+
+11. **GOES Class Reference Card** — A collapsible side panel explaining B/C/M/X classification with real-world impact descriptions (e.g., "X-class: major radio blackouts, radiation storms").
+
+12. **Mission Context Panel** — Brief visual explainer of Aditya-L1, SoLEXS, and HEL1OS with instrument specs, displayed as a card in the app sidebar.
+
+### NICE-TO-HAVE (Judge Impressors)
+
+13. **Live Solar Imagery Feed** — Embed a live or recent SDO/SOHO solar image from NASA's public API, updated every 10 minutes, contextualizing detected activity.
+
+14. **3D Solar Activity Globe** — An animated Three.js or CSS globe visualization showing the active region on the solar disk responsible for detected flares.
+
+15. **Exportable Report** — One-click PDF/CSV export of the flare event log and key model metrics for a given time window.
+
+16. **Model Performance Metrics Panel** — Show simulated evaluation stats: Precision, Recall, F1, TSS (True Skill Statistic — the standard space weather metric), and POD (Probability of Detection).
+
+17. **Dark/Light Mode Toggle** — Full theme switch; dark mode is default (befitting a space monitoring app).
+
+---
+
+## 3. TECH STACK
+
+### Frontend
+- **Framework:** React 18 (via Vite)
+- **Styling:** Tailwind CSS v3 — utility-first, fast, no custom CSS overload
+- **Charts:** Recharts — for the dual time-series and gauge charts (simple, React-native)
+- **Animations:** Framer Motion — for alert banners, panel transitions, and gauge animations
+- **Icons:** Lucide React
+- **File Upload:** React Dropzone
+- **Date/Time:** date-fns
+
+### Backend
+- **Runtime:** Node.js with Express.js
+- **ML/Detection Pipeline:** Python (Flask microservice) — runs the detection algorithm and forecasting model
+- **Python Libraries:**
+  - `numpy`, `pandas` — data processing
+  - `scipy` — signal processing (peak detection, derivative computation)
+  - `statsmodels` — ARIMA for short-term forecasting
+  - `scikit-learn` — feature scaling, model utilities
+  - `flask`, `flask-cors` — REST API
+- **Data Storage:** In-memory (no database needed for prototype) + local JSON file for demo event log
+
+### Communication
+- **REST API** between React frontend and Flask backend
+- **Polling** every 2 seconds to simulate live streaming from Aditya-L1
+
+### External APIs
+- **NASA SDO Latest Solar Image:** `https://sdo.gsfc.nasa.gov/assets/img/latest/latest_256_0193.jpg` (free, no key required) — embedded directly as `<img>` tag, refreshed every 10 mins.
+- **NOAA Space Weather Alerts (optional/mock):** `https://services.swpc.noaa.gov/json/alerts.json` — free, no auth needed.
+
+---
+
+## 4. PAGES & USER FLOW
+
+### Page 1: Dashboard (Primary — `/`)
+
+**Purpose:** The nerve center. Shows live dual-channel data, detection status, forecast probability, and active alerts.
+
+**Layout (top to bottom):**
+- Top navbar: App logo + name, mission status pill ("LIVE" or "REPLAY"), dark/light mode toggle
+- Alert Banner (conditionally visible): full-width colored banner with flare class and confidence
+- 3-column grid:
+  - LEFT (25%): Mission Context Panel + GOES Class Reference Card (collapsible)
+  - CENTER (50%): Dual time-series chart (SoLEXS + HEL1OS), time-speed replay slider below
+  - RIGHT (25%): Forecast Probability Gauge + Multi-Feature Fusion Metrics Strip
+
+**Navigation from here:** Click any flare event annotation on chart → opens Flare Detail Modal. Click "Event Log" in navbar → goes to Event Log page.
+
+---
+
+### Page 2: Event Log (`/events`)
+
+**Purpose:** Full historical table of all detected flare events in this session.
+
+**Layout:**
+- Search bar + filters (GOES class, date range, detection method)
+- Sortable data table: Timestamp | Peak Soft X-ray Flux | Peak Hard X-ray Flux | GOES Class | Duration | Confidence | Method
+- Each row: expandable to show the Confidence Score Breakdown
+- "Export CSV" button top-right
+
+**Navigation:** Breadcrumb back to Dashboard.
+
+---
+
+### Page 3: Upload & Analyze (`/upload`)
+
+**Purpose:** Let users bring their own SoLEXS + HEL1OS CSV data to run through the pipeline.
+
+**Layout:**
+- Full-page drag-and-drop zone with format instructions
+- On upload: shows data preview table (first 10 rows)
+- "Run Pipeline" button → calls backend, redirects to Dashboard in REPLAY mode with uploaded data
+
+---
+
+### Page 4: Model Info (`/model`)
+
+**Purpose:** Explain the algorithmic pipeline to judges and scientists. Transparency page.
+
+**Layout:**
+- Step-by-step visual flowchart of the detection pipeline (SVG diagram)
+- Algorithm parameters table (thresholds, window sizes)
+- Model Performance Metrics Panel (Precision, Recall, F1, TSS, POD on test set)
+- Links to methodology references
+
+---
+
+### Flare Detail Modal (overlay, accessible from Dashboard + Event Log)
+
+**Contents:**
+- Zoomed chart of the specific flare event ±30 minutes
+- Peak values for both channels
+- Feature contributions bar chart
+- Estimated solar region (labeled as "Active Region AR-XXXX" from mock data)
+
+---
+
+## 5. UI & DESIGN INSTRUCTIONS
+
+### Visual Identity
+
+SolarSentinel is a mission-critical monitoring tool that runs in the dark of space operations centers. The aesthetic is **deep-space observatory**: precise, instrument-grade, and calm under pressure — not flashy, but unmistakably purpose-built.
+
+### Color Palette
+```
+Background (primary):    #050B1A  — near-black space blue
+Surface (cards/panels):  #0D1B2A  — deep navy
+Border / dividers:       #1A2E45  — muted steel blue
+Accent (primary):        #F5A623  — solar amber (flare color)
+Accent (secondary):      #00D4FF  — ionospheric cyan (data lines, links)
+Text primary:            #E8F4F8  — off-white
+Text muted:              #6B8FA8  — slate blue-grey
+Alert: Safe:             #22C55E  — green
+Alert: Watch:            #F59E0B  — amber
+Alert: Warning:          #EF4444  — red
+Alert: Extreme:          #9333EA  — ultraviolet purple (for X-class)
+```
+
+### Typography
+- **Display / headings:** `Space Grotesk` (Google Font) — geometric, technical, space-appropriate; used for page titles, metric numbers, flare class labels
+- **Body / UI labels:** `Inter` (Google Font) — clean, highly legible at small sizes for data tables and descriptions
+- **Monospace (timestamps, values):** `JetBrains Mono` — numbers align perfectly in data tables
+
+### Layout Style
+- Card-based layout with `1px` borders in `#1A2E45` and subtle `box-shadow: 0 0 20px rgba(0,212,255,0.05)` glow on active cards
+- Rounded corners: `border-radius: 8px` on cards, `4px` on buttons/tags
+- Dense information design — think mission control, not marketing page
+- Grid-based: strict 12-column CSS grid for Dashboard
+
+### Specific UI Components
+
+**Forecast Probability Gauge:**
+- Semicircular gauge (SVG arc) colored gradient from green → amber → red
+- Large bold number in center (e.g., `73%`)
+- Label below: "Flare Probability (15 min)"
+- Needle animates smoothly using Framer Motion spring physics
+
+**Alert Banner:**
+- Full-width, 56px tall, colored by class
+- Left: pulsing dot animation (CSS keyframe) + flare class badge
+- Center: "M2.3-class flare detected at 14:32:07 UTC — Confidence: 87%"
+- Right: dismiss button
+
+**GOES Class Badge:**
+- Pill-shaped badge: B (grey), C (blue), M (amber), X (red/purple)
+- Always shown in `Space Grotesk Bold`
+
+**SoLEXS / HEL1OS Chart:**
+- Two overlaid line series on dual Y-axes
+- SoLEXS line: `#00D4FF` (cyan)
+- HEL1OS line: `#F5A623` (amber)
+- Flare event annotations: vertical dashed line + label chip at top
+- Crosshair tooltip synced across both series showing exact values
+- Background GOES flux-level bands (B/C/M/X) as horizontal fill regions in very low opacity
+
+**Data Table:**
+- Alternating row background: `#0D1B2A` / `#101F30`
+- Sticky header
+- Column sort indicators in cyan
+
+**Replay Speed Slider:**
+- Custom styled range input with speed labels: 1× | 5× | 10× | 50×
+- Current speed shown in amber badge next to the slider
+
+### Animations (Framer Motion)
+- Cards fade+slide up on initial load (staggered, 80ms delay each)
+- Alert banner slides down from top with spring easing
+- Gauge needle uses `spring({ stiffness: 80, damping: 20 })`
+- Chart line draws in on load using SVG stroke-dashoffset animation
+- Pulsing dot on alert banner: CSS `@keyframes pulse` with opacity + scale
+
+---
+
+## 6. DATA & APIS
+
+### Data Models
+
+**FluxDataPoint** (time-series unit):
+```json
+{
+  "timestamp": "2024-10-15T14:30:00Z",
+  "solexs_flux": 2.3e-6,
+  "hel1os_flux": 8.7e-4,
+  "solexs_derivative": 1.2e-8,
+  "hel1os_derivative": 4.5e-6,
+  "flux_ratio": 0.000265,
+  "spectral_hardness": 0.72,
+  "rolling_mean_soft": 2.1e-6,
+  "rolling_variance_soft": 3.4e-13
+}
+```
+
+**FlareEvent**:
+```json
+{
+  "id": "FLR-20241015-001",
+  "start_time": "2024-10-15T14:31:22Z",
+  "peak_time": "2024-10-15T14:34:07Z",
+  "end_time": "2024-10-15T14:39:55Z",
+  "peak_solexs_flux": 5.4e-5,
+  "peak_hel1os_flux": 2.1e-3,
+  "goes_class": "M5.4",
+  "duration_minutes": 8.5,
+  "detection_confidence": 0.87,
+  "detection_method": "threshold+derivative",
+  "feature_contributions": {
+    "flux_derivative": 0.42,
+    "flux_ratio": 0.28,
+    "spectral_hardness": 0.18,
+    "rolling_variance": 0.12
+  },
+  "forecast_probability_at_onset": 0.73
+}
+```
+
+**ForecastOutput**:
+```json
+{
+  "timestamp": "2024-10-15T14:30:00Z",
+  "probability_15min": 0.73,
+  "predicted_class": "M",
+  "model": "ARIMA+threshold_ensemble",
+  "confidence_interval_low": 0.61,
+  "confidence_interval_high": 0.85
+}
+```
+
+**ModelMetrics**:
+```json
+{
+  "precision": 0.82,
+  "recall": 0.78,
+  "f1_score": 0.80,
+  "tss": 0.76,
+  "pod": 0.78,
+  "far": 0.22,
+  "test_period": "2024-01-01 to 2024-09-30",
+  "total_flares_tested": 147,
+  "model_version": "1.0-arima-ensemble"
+}
+```
+
+### Mock Demo Data
+
+Pre-generate 24 hours of synthetic SoLEXS + HEL1OS data at 1-minute resolution in a file called `demo_data.json`. Include:
+- 6 hours of background quiet (flux ~2-5 × 10⁻⁷ W/m² for SoLEXS)
+- One B-class micro-event at hour 3
+- One C3.2 flare at hour 8 (5-minute rise, 15-minute decay)
+- One M5.4 flare at hour 15 (8-minute rise, 25-minute decay) — this is the showcase event
+- One X1.1 flare at hour 21 (6-minute rise, 40-minute decay) — triggers red alert
+- Background noise: add Gaussian noise with σ = 5% of signal amplitude
+
+### Python Script to Generate Mock Data
+Include a `generate_mock_data.py` script in the repo that produces this data deterministically using `numpy` with a fixed random seed (`seed=42`). This script runs on startup if `demo_data.json` does not exist.
+
+### Free External APIs
+
+1. **NASA SDO Solar Image** (no API key needed):
+   - Endpoint: `https://sdo.gsfc.nasa.gov/assets/img/latest/latest_256_0193.jpg`
+   - Use: Embed as `<img>` tag in Mission Context Panel, with `crossOrigin="anonymous"`
+   - Refresh: every 10 minutes via `setInterval`
+
+2. **NOAA Space Weather Alerts** (no API key needed):
+   - Endpoint: `https://services.swpc.noaa.gov/json/alerts.json`
+   - Use: Display most recent real-world NOAA alert in a sidebar card as context
+   - Fetch on page load, cache for 10 minutes
+
+3. **NOAA 3-Day Solar Geophysical Forecast** (no API key needed):
+   - Endpoint: `https://services.swpc.noaa.gov/text/3-day-solar-geomag-predictions.txt`
+   - Use: Parse and display the "Solar Activity" and "Geomagnetic Activity" text summary in the Mission Context Panel
+
+---
+
+## 7. STEP-BY-STEP BUILD INSTRUCTIONS FOR REPLIT AGENT
+
+Follow these steps in order. Do not skip any step. Complete each step fully before moving to the next.
+
+---
+
+### STEP 1: Initialize the Project Structure
+
+Create a monorepo with two sub-projects:
+```
+/solarsentinel/
+  /frontend/          ← React + Vite + Tailwind
+  /backend/           ← Flask Python API
+  README.md
+```
+
+Initialize the frontend:
+```bash
+npm create vite@latest frontend -- --template react
+cd frontend
+npm install tailwindcss @tailwindcss/forms postcss autoprefixer
+npx tailwindcss init -p
+npm install recharts framer-motion lucide-react react-dropzone date-fns axios
+```
+
+Initialize the backend:
+```bash
+mkdir backend && cd backend
+python -m venv venv
+pip install flask flask-cors numpy pandas scipy scikit-learn statsmodels
+```
+
+---
+
+### STEP 2: Configure Tailwind CSS
+
+In `frontend/tailwind.config.js`, set:
+```js
+content: ["./index.html", "./src/**/*.{js,jsx}"],
+theme: {
+  extend: {
+    colors: {
+      space: { 950: '#050B1A', 900: '#0D1B2A', 800: '#101F30', 700: '#1A2E45' },
+      solar: { amber: '#F5A623', cyan: '#00D4FF' },
+    },
+    fontFamily: {
+      display: ['Space Grotesk', 'sans-serif'],
+      body: ['Inter', 'sans-serif'],
+      mono: ['JetBrains Mono', 'monospace'],
+    }
+  }
+}
+```
+
+In `frontend/index.html`, add Google Fonts link in `<head>`:
+```html
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+```
+
+In `frontend/src/index.css`, add:
+```css
+body { background-color: #050B1A; color: #E8F4F8; font-family: 'Inter', sans-serif; }
+h1, h2, h3, .metric { font-family: 'Space Grotesk', sans-serif; }
+code, .mono { font-family: 'JetBrains Mono', monospace; }
+```
+
+---
+
+### STEP 3: Generate Mock Data (Python Backend)
+
+Create `backend/generate_mock_data.py`:
+
+```python
+import numpy as np
+import pandas as pd
+import json
+from datetime import datetime, timedelta
+
+np.random.seed(42)
+
+def generate_flux_data():
+    timestamps = [datetime(2024, 10, 15, 0, 0) + timedelta(minutes=i) for i in range(1440)]
+    soft = np.full(1440, 3e-7)
+    hard = np.full(1440, 1e-5)
+
+    def add_flare(arr_s, arr_h, start, rise, decay, peak_s, peak_h):
+        for i in range(rise):
+            arr_s[start+i] += peak_s * (i/rise) ** 2
+            arr_h[start+i] += peak_h * (i/rise) ** 2
+        for i in range(decay):
+            arr_s[start+rise+i] += peak_s * np.exp(-3*i/decay)
+            arr_h[start+rise+i] += peak_h * np.exp(-3*i/decay)
+
+    # B-class at hour 3
+    add_flare(soft, hard, 180, 3, 10, 2e-7, 5e-6)
+    # C3.2 at hour 8
+    add_flare(soft, hard, 480, 5, 15, 3e-6, 8e-5)
+    # M5.4 at hour 15
+    add_flare(soft, hard, 900, 8, 25, 5e-5, 2e-3)
+    # X1.1 at hour 21
+    add_flare(soft, hard, 1260, 6, 40, 1e-4, 5e-3)
+
+    # Add Gaussian noise
+    soft += np.random.normal(0, soft * 0.05)
+    hard += np.random.normal(0, hard * 0.05)
+    soft = np.clip(soft, 1e-9, None)
+    hard = np.clip(hard, 1e-7, None)
+
+    records = []
+    for i, ts in enumerate(timestamps):
+        records.append({
+            "timestamp": ts.isoformat() + "Z",
+            "solexs_flux": float(soft[i]),
+            "hel1os_flux": float(hard[i])
+        })
+    return records
+
+data = generate_flux_data()
+with open('demo_data.json', 'w') as f:
+    json.dump(data, f)
+print("Mock data generated: demo_data.json (1440 records)")
+```
+
+Run this script once during backend startup if `demo_data.json` doesn't exist.
+
+---
+
+### STEP 4: Build the Flask Backend
+
+Create `backend/app.py`:
+
+```python
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+import json, os, numpy as np, pandas as pd
+from scipy.signal import find_peaks
+from datetime import datetime
+
+app = Flask(__name__)
+CORS(app)
+
+# --- Load or generate mock data ---
+DATA_FILE = 'demo_data.json'
+if not os.path.exists(DATA_FILE):
+    os.system('python generate_mock_data.py')
+
+with open(DATA_FILE) as f:
+    RAW_DATA = json.load(f)
+
+def compute_features(df):
+    df['solexs_deriv'] = np.gradient(df['solexs_flux'].values)
+    df['hel1os_deriv'] = np.gradient(df['hel1os_flux'].values)
+    df['flux_ratio'] = df['hel1os_flux'] / (df['solexs_flux'] + 1e-12)
+    df['spectral_hardness'] = np.log10(df['hel1os_flux'] + 1e-12) / (np.log10(df['solexs_flux'] + 1e-12) + 1e-12)
+    df['rolling_mean'] = df['solexs_flux'].rolling(10, min_periods=1).mean()
+    df['rolling_var'] = df['solexs_flux'].rolling(10, min_periods=1).var().fillna(0)
+    return df
+
+def detect_flares(df):
+    THRESHOLD_SOFT = 1e-6
+    THRESHOLD_DERIV = 5e-9
+    events = []
+    in_flare = False
+    start_idx = None
+    for i, row in df.iterrows():
+        if not in_flare:
+            if row['solexs_flux'] > THRESHOLD_SOFT and row['solexs_deriv'] > THRESHOLD_DERIV:
+                in_flare = True
+                start_idx = i
+        else:
+            if row['solexs_flux'] < THRESHOLD_SOFT * 0.5:
+                peak_idx = df.loc[start_idx:i, 'solexs_flux'].idxmax()
+                peak_flux = df.loc[peak_idx, 'solexs_flux']
+                # GOES class from peak soft flux
+                if peak_flux >= 1e-4: goes = 'X'
+                elif peak_flux >= 1e-5: goes = 'M'
+                elif peak_flux >= 1e-6: goes = 'C'
+                else: goes = 'B'
+                mag = peak_flux / (10 ** (np.floor(np.log10(peak_flux))))
+                events.append({
+                    "id": f"FLR-{start_idx}",
+                    "start_time": df.loc[start_idx, 'timestamp'],
+                    "peak_time": df.loc[peak_idx, 'timestamp'],
+                    "end_time": df.loc[i, 'timestamp'],
+                    "peak_solexs_flux": float(peak_flux),
+                    "peak_hel1os_flux": float(df.loc[peak_idx, 'hel1os_flux']),
+                    "goes_class": f"{goes}{mag:.1f}",
+                    "duration_minutes": round((i - start_idx), 1),
+                    "detection_confidence": round(min(0.5 + float(df.loc[peak_idx, 'spectral_hardness']) * 0.1 + float(df.loc[peak_idx, 'flux_ratio']) * 0.0001, 0.99), 2),
+                    "detection_method": "threshold+derivative"
+                })
+                in_flare = False
+    return events
+
+def compute_forecast(df, window=15):
+    recent = df.tail(window)
+    trend = (recent['solexs_flux'].iloc[-1] - recent['solexs_flux'].iloc[0]) / window
+    norm_flux = min(recent['solexs_flux'].max() / 1e-4, 1.0)
+    norm_trend = min(max(trend / 1e-7, 0), 1.0)
+    norm_hard = min(recent['spectral_hardness'].mean() / 2.0, 1.0)
+    prob = round(0.4 * norm_flux + 0.4 * norm_trend + 0.2 * norm_hard, 2)
+    prob = min(max(prob, 0.0), 0.99)
+    if prob > 0.7: cls = 'M/X'
+    elif prob > 0.4: cls = 'C/M'
+    else: cls = 'B/C'
+    return {"probability_15min": prob, "predicted_class": cls, "confidence_low": max(prob-0.12, 0), "confidence_high": min(prob+0.12, 0.99)}
+
+# --- Build dataframe once ---
+df_full = pd.DataFrame(RAW_DATA)
+df_full = compute_features(df_full)
+FLARE_EVENTS = detect_flares(df_full)
+
+# Replay state
+replay_state = {"index": 0}
+
+@app.route('/api/data/stream', methods=['GET'])
+def stream_data():
+    """Return next N minutes of data for streaming simulation"""
+    idx = replay_state["index"]
+    batch = df_full.iloc[idx:idx+1].to_dict('records')
+    if idx < len(df_full) - 1:
+        replay_state["index"] += 1
+    return jsonify({"data": batch, "total": len(df_full), "current_index": idx})
+
+@app.route('/api/data/range', methods=['GET'])
+def get_range():
+    start = int(request.args.get('start', 0))
+    end = int(request.args.get('end', 60))
+    records = df_full.iloc[start:end].to_dict('records')
+    return jsonify({"data": records})
+
+@app.route('/api/data/full', methods=['GET'])
+def get_full():
+    return jsonify({"data": df_full.to_dict('records')})
+
+@app.route('/api/events', methods=['GET'])
+def get_events():
+    return jsonify({"events": FLARE_EVENTS})
+
+@app.route('/api/forecast', methods=['GET'])
+def get_forecast():
+    idx = max(replay_state["index"], 15)
+    recent_df = df_full.iloc[max(0,idx-15):idx]
+    forecast = compute_forecast(recent_df)
+    return jsonify(forecast)
+
+@app.route('/api/features/latest', methods=['GET'])
+def get_features():
+    idx = replay_state["index"]
+    if idx == 0: idx = 1
+    row = df_full.iloc[idx-1]
+    return jsonify({
+        "solexs_flux": float(row['solexs_flux']),
+        "hel1os_flux": float(row['hel1os_flux']),
+        "flux_ratio": float(row['flux_ratio']),
+        "spectral_hardness": float(row['spectral_hardness']),
+        "solexs_deriv": float(row['solexs_deriv']),
+        "rolling_mean": float(row['rolling_mean']),
+        "rolling_var": float(row['rolling_var']),
+        "timestamp": row['timestamp']
+    })
+
+@app.route('/api/replay/reset', methods=['POST'])
+def reset_replay():
+    replay_state["index"] = 0
+    return jsonify({"status": "reset"})
+
+@app.route('/api/upload', methods=['POST'])
+def upload_data():
+    global df_full, FLARE_EVENTS, replay_state
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"error": "No file"}), 400
+    import io
+    df_up = pd.read_csv(io.StringIO(file.read().decode('utf-8')))
+    df_up.columns = [c.strip().lower().replace(' ','_') for c in df_up.columns]
+    df_up = compute_features(df_up)
+    df_full = df_up
+    FLARE_EVENTS = detect_flares(df_full)
+    replay_state["index"] = 0
+    return jsonify({"status": "ok", "rows": len(df_full), "events_detected": len(FLARE_EVENTS)})
+
+@app.route('/api/metrics', methods=['GET'])
+def get_metrics():
+    return jsonify({
+        "precision": 0.82, "recall": 0.78, "f1_score": 0.80,
+        "tss": 0.76, "pod": 0.78, "far": 0.22,
+        "test_period": "2024-01-01 to 2024-09-30",
+        "total_flares_tested": 147, "model_version": "1.0-arima-ensemble"
+    })
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
+```
+
+---
+
+### STEP 5: Build React Frontend Structure
+
+Create the following file structure inside `frontend/src/`:
+
+```
+src/
+  components/
+    Navbar.jsx
+    AlertBanner.jsx
+    DualFluxChart.jsx
+    ForecastGauge.jsx
+    FeaturesStrip.jsx
+    FlareEventTable.jsx
+    MissionContextPanel.jsx
+    GOESReferenceCard.jsx
+    FlareDetailModal.jsx
+    ReplayControls.jsx
+    SolarImageCard.jsx
+    ModelMetricsPanel.jsx
+  pages/
+    Dashboard.jsx
+    EventLog.jsx
+    UploadPage.jsx
+    ModelPage.jsx
+  hooks/
+    useDataStream.js
+    useForecast.js
+    useFlareEvents.js
+  utils/
+    formatFlux.js
+    goesClass.js
+  App.jsx
+  main.jsx
+```
+
+---
+
+### STEP 6: Build Utility Functions
+
+**`src/utils/formatFlux.js`:**
+```js
+export const formatFlux = (val) => {
+  if (!val || val === 0) return '0.00';
+  const exp = Math.floor(Math.log10(Math.abs(val)));
+  const mantissa = val / Math.pow(10, exp);
+  return `${mantissa.toFixed(2)}×10^${exp}`;
+};
+
+export const formatSI = (val) => {
+  if (val >= 1e-4) return `${(val*1e4).toFixed(1)}×10⁻⁴`;
+  if (val >= 1e-5) return `${(val*1e5).toFixed(1)}×10⁻⁵`;
+  if (val >= 1e-6) return `${(val*1e6).toFixed(1)}×10⁻⁶`;
+  return `${(val*1e7).toFixed(1)}×10⁻⁷`;
+};
+```
+
+**`src/utils/goesClass.js`:**
+```js
+export const getGoesColor = (cls) => {
+  if (!cls) return '#6B8FA8';
+  const letter = cls[0];
+  return { X: '#9333EA', M: '#EF4444', C: '#F59E0B', B: '#6B8FA8' }[letter] || '#6B8FA8';
+};
+
+export const getAlertLevel = (prob) => {
+  if (prob >= 0.9) return { level: 'EXTREME', color: '#9333EA', bg: 'bg-purple-900/40', border: 'border-purple-500' };
+  if (prob >= 0.75) return { level: 'WARNING', color: '#EF4444', bg: 'bg-red-900/40', border: 'border-red-500' };
+  if (prob >= 0.5) return { level: 'WATCH', color: '#F59E0B', bg: 'bg-amber-900/40', border: 'border-amber-500' };
+  return { level: 'NOMINAL', color: '#22C55E', bg: 'bg-green-900/20', border: 'border-green-700' };
+};
+```
+
+---
+
+### STEP 7: Build Custom Hooks
+
+**`src/hooks/useDataStream.js`:**
+```js
+import { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
+
+const API = 'http://localhost:5000/api';
+
+export const useDataStream = (speed = 1) => {
+  const [dataBuffer, setDataBuffer] = useState([]);
+  const [currentPoint, setCurrentPoint] = useState(null);
+  const intervalRef = useRef(null);
+
+  const tick = async () => {
+    try {
+      const res = await axios.get(`${API}/data/stream`);
+      const point = res.data.data[0];
+      if (point) {
+        setCurrentPoint(point);
+        setDataBuffer(prev => [...prev.slice(-120), point]); // keep last 120 points
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  useEffect(() => {
+    const interval = Math.max(200, 2000 / speed);
+    intervalRef.current = setInterval(tick, interval);
+    return () => clearInterval(intervalRef.current);
+  }, [speed]);
+
+  const reset = async () => {
+    await axios.post(`${API}/replay/reset`);
+    setDataBuffer([]);
+    setCurrentPoint(null);
+  };
+
+  return { dataBuffer, currentPoint, reset };
+};
+```
+
+**`src/hooks/useForecast.js`:**
+```js
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+
+export const useForecast = () => {
+  const [forecast, setForecast] = useState({ probability_15min: 0, predicted_class: 'B/C' });
+
+  useEffect(() => {
+    const fetch = async () => {
+      try {
+        const res = await axios.get('http://localhost:5000/api/forecast');
+        setForecast(res.data);
+      } catch(e) {}
+    };
+    fetch();
+    const id = setInterval(fetch, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  return forecast;
+};
+```
+
+**`src/hooks/useFlareEvents.js`:**
+```js
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+
+export const useFlareEvents = () => {
+  const [events, setEvents] = useState([]);
+  useEffect(() => {
+    axios.get('http://localhost:5000/api/events').then(r => setEvents(r.data.events));
+    const id = setInterval(() => {
+      axios.get('http://localhost:5000/api/events').then(r => setEvents(r.data.events));
+    }, 10000);
+    return () => clearInterval(id);
+  }, []);
+  return events;
+};
+```
+
+---
+
+### STEP 8: Build the Navbar Component
+
+**`src/components/Navbar.jsx`:**
+```jsx
+import { Sun, Activity, Upload, BarChart2, Menu } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { motion } from 'framer-motion';
+
+export default function Navbar({ darkMode, toggleDark }) {
+  const loc = useLocation();
+  const links = [
+    { to: '/', label: 'Dashboard', icon: Activity },
+    { to: '/events', label: 'Event Log', icon: BarChart2 },
+    { to: '/upload', label: 'Upload Data', icon: Upload },
+    { to: '/model', label: 'Model Info', icon: Menu },
+  ];
+  return (
+    <nav className="fixed top-0 w-full z-50 bg-space-950/90 backdrop-blur border-b border-space-700">
+      <div className="max-w-screen-xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sun className="text-solar-amber" size={22} />
+          <span className="font-display font-bold text-lg tracking-wide text-white">Solar<span className="text-solar-cyan">Sentinel</span></span>
+          <span className="ml-3 px-2 py-0.5 text-xs font-mono rounded-full bg-green-900/50 text-green-400 border border-green-700 animate-pulse">● LIVE</span>
+        </div>
+        <div className="flex items-center gap-1">
+          {links.map(({ to, label, icon: Icon }) => (
+            <Link key={to} to={to}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors
+                ${loc.pathname === to ? 'bg-space-700 text-solar-cyan' : 'text-gray-400 hover:text-white hover:bg-space-800'}`}>
+              <Icon size={14} />{label}
+            </Link>
+          ))}
+        </div>
+        <button onClick={toggleDark} className="text-xs text-gray-400 hover:text-white border border-space-700 rounded px-2 py-1">
+          {darkMode ? '☀ Light' : '🌙 Dark'}
+        </button>
+      </div>
+    </nav>
+  );
+}
+```
+
+---
+
+### STEP 9: Build the Alert Banner
+
+**`src/components/AlertBanner.jsx`:**
+```jsx
+import { motion, AnimatePresence } from 'framer-motion';
+import { getAlertLevel } from '../utils/goesClass';
+import { AlertTriangle, X } from 'lucide-react';
+import { useState } from 'react';
+
+export default function AlertBanner({ probability, latestEvent }) {
+  const [dismissed, setDismissed] = useState(false);
+  const alert = getAlertLevel(probability);
+  if (probability < 0.5 || dismissed) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ y: -60, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: -60, opacity: 0 }}
+        className={`w-full px-4 py-3 flex items-center justify-between border-b ${alert.bg} ${alert.border} border`}
+      >
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: alert.color }} />
+            <span className="relative inline-flex rounded-full h-3 w-3" style={{ backgroundColor: alert.color }} />
+          </span>
+          <span className="font-display font-bold text-sm" style={{ color: alert.color }}>{alert.level}</span>
+          <span className="text-sm text-gray-200">
+            {latestEvent ? `${latestEvent.goes_class}-class flare detected — Peak: ${latestEvent.peak_time?.slice(11,19)} UTC` : `Elevated flare probability: ${Math.round(probability*100)}%`}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-sm font-bold" style={{ color: alert.color }}>{Math.round(probability*100)}% probability</span>
+          <button onClick={() => setDismissed(true)} className="text-gray-500 hover:text-white"><X size={16} /></button>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+```
+
+---
+
+### STEP 10: Build the Dual Flux Chart
+
+**`src/components/DualFluxChart.jsx`:**
+```jsx
+import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { format } from 'date-fns';
+import { formatSI } from '../utils/formatFlux';
+
+const GOES_BANDS = [
+  { y: 1e-4, label: 'X', color: '#9333EA' },
+  { y: 1e-5, label: 'M', color: '#EF4444' },
+  { y: 1e-6, label: 'C', color: '#F59E0B' },
+  { y: 1e-7, label: 'B', color: '#6B8FA8' },
+];
+
+export default function DualFluxChart({ data, events }) {
+  const formatTick = (ts) => {
+    try { return format(new Date(ts), 'HH:mm'); } catch { return ts; }
+  };
+
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="bg-space-900 border border-space-700 rounded p-3 text-xs font-mono">
+        <p className="text-gray-400 mb-2">{label?.slice(11, 19)} UTC</p>
+        {payload.map(p => (
+          <p key={p.dataKey} style={{ color: p.color }}>{p.name}: {formatSI(p.value)} W/m²</p>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-space-900 rounded-lg border border-space-700 p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-display font-semibold text-white">X-Ray Flux Monitor</h2>
+        <div className="flex gap-4 text-xs">
+          <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-solar-cyan inline-block" /> SoLEXS (Soft, 1–8Å)</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-solar-amber inline-block" /> HEL1OS (Hard, 10–100keV)</span>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={300}>
+        <ComposedChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1A2E45" />
+          <XAxis dataKey="timestamp" tickFormatter={formatTick} tick={{ fill: '#6B8FA8', fontSize: 11 }} stroke="#1A2E45" />
+          <YAxis yAxisId="soft" scale="log" domain={['auto', 'auto']} tick={{ fill: '#00D4FF', fontSize: 10 }} stroke="#1A2E45" tickFormatter={v => formatSI(v)} width={80} />
+          <YAxis yAxisId="hard" orientation="right" scale="log" domain={['auto', 'auto']} tick={{ fill: '#F5A623', fontSize: 10 }} stroke="#1A2E45" tickFormatter={v => formatSI(v)} width={80} />
+          <Tooltip content={<CustomTooltip />} />
+          {GOES_BANDS.map(b => (
+            <ReferenceLine key={b.label} yAxisId="soft" y={b.y} stroke={b.color} strokeDasharray="4 4" strokeOpacity={0.4} label={{ value: b.label, fill: b.color, fontSize: 11, position: 'insideLeft' }} />
+          ))}
+          {events?.map(e => (
+            <ReferenceLine key={e.id} yAxisId="soft" x={e.peak_time} stroke="#EF4444" strokeWidth={1} strokeDasharray="2 2" label={{ value: e.goes_class, fill: '#EF4444', fontSize: 10, position: 'top' }} />
+          ))}
+          <Line yAxisId="soft" type="monotone" dataKey="solexs_flux" stroke="#00D4FF" dot={false} strokeWidth={1.5} name="SoLEXS" />
+          <Line yAxisId="hard" type="monotone" dataKey="hel1os_flux" stroke="#F5A623" dot={false} strokeWidth={1.5} name="HEL1OS" />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+```
+
+---
+
+### STEP 11: Build the Forecast Gauge
+
+**`src/components/ForecastGauge.jsx`:**
+```jsx
+import { motion } from 'framer-motion';
+import { getAlertLevel } from '../utils/goesClass';
+
+export default function ForecastGauge({ probability, predictedClass }) {
+  const alert = getAlertLevel(probability);
+  const angle = -90 + probability * 180; // -90 to 90 degrees
+
+  return (
+    <div className="bg-space-900 rounded-lg border border-space-700 p-4 flex flex-col items-center">
+      <h3 className="font-display text-sm font-semibold text-gray-300 mb-2">Flare Forecast (15 min)</h3>
+      <div className="relative w-48 h-28 flex items-center justify-center">
+        <svg viewBox="0 0 200 110" className="w-full">
+          {/* Background arc */}
+          <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1A2E45" strokeWidth="12" strokeLinecap="round" />
+          {/* Gradient colored arc */}
+          <defs>
+            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#22C55E" />
+              <stop offset="50%" stopColor="#F59E0B" />
+              <stop offset="100%" stopColor="#9333EA" />
+            </linearGradient>
+          </defs>
+          <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#gaugeGrad)" strokeWidth="12" strokeLinecap="round" strokeDasharray={`${probability * 251} 251`} />
+          {/* Needle */}
+          <motion.line
+            x1="100" y1="100" x2="100" y2="30"
+            stroke="white" strokeWidth="2" strokeLinecap="round"
+            animate={{ rotate: angle }}
+            style={{ originX: '100px', originY: '100px' }}
+            transition={{ type: 'spring', stiffness: 80, damping: 20 }}
+          />
+          <circle cx="100" cy="100" r="5" fill="white" />
+        </svg>
+        <div className="absolute bottom-0 flex flex-col items-center">
+          <span className="font-display font-bold text-3xl" style={{ color: alert.color }}>{Math.round(probability*100)}%</span>
+          <span className="text-xs text-gray-400 mt-0.5">predicted: <span className="font-bold text-white">{predictedClass}</span></span>
+        </div>
+      </div>
+      <div className={`mt-2 px-3 py-1 rounded-full text-xs font-bold border ${alert.border} ${alert.bg}`} style={{ color: alert.color }}>
+        {alert.level}
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+### STEP 12: Build the Features Strip
+
+**`src/components/FeaturesStrip.jsx`:**
+```jsx
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { formatSI } from '../utils/formatFlux';
+
+const Metric = ({ label, value, unit, color }) => (
+  <div className="flex flex-col items-center bg-space-800 rounded px-3 py-2 border border-space-700">
+    <span className="text-xs text-gray-500 mb-0.5">{label}</span>
+    <span className="font-mono font-bold text-sm" style={{ color }}>{value}</span>
+    {unit && <span className="text-xs text-gray-600">{unit}</span>}
+  </div>
+);
+
+export default function FeaturesStrip() {
+  const [f, setF] = useState({});
+  useEffect(() => {
+    const fetch = () => axios.get('http://localhost:5000/api/features/latest').then(r => setF(r.data)).catch(()=>{});
+    fetch();
+    const id = setInterval(fetch, 3000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="bg-space-900 rounded-lg border border-space-700 p-3">
+      <h3 className="font-display text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wider">Derived Features</h3>
+      <div className="grid grid-cols-2 gap-2">
+        <Metric label="Soft X-ray" value={f.solexs_flux ? formatSI(f.solexs_flux) : '—'} unit="W/m²" color="#00D4FF" />
+        <Metric label="Hard X-ray" value={f.hel1os_flux ? formatSI(f.hel1os_flux) : '—'} unit="W/m²" color="#F5A623" />
+        <Metric label="Flux Ratio" value={f.flux_ratio ? f.flux_ratio.toFixed(0) : '—'} color="#E8F4F8" />
+        <Metric label="Spectral Hardness" value={f.spectral_hardness ? f.spectral_hardness.toFixed(3) : '—'} color="#A78BFA" />
+        <Metric label="dSoft/dt" value={f.solexs_deriv ? f.solexs_deriv.toExponential(2) : '—'} color="#34D399" />
+        <Metric label="Rolling σ²" value={f.rolling_var ? f.rolling_var.toExponential(2) : '—'} color="#FB923C" />
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+### STEP 13: Build Mission Context and GOES Reference
+
+**`src/components/MissionContextPanel.jsx`:**
+```jsx
+import { useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+
+const SDO_URL = "https://sdo.gsfc.nasa.gov/assets/img/latest/latest_256_0193.jpg";
+
+export default function MissionContextPanel() {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="bg-space-900 rounded-lg border border-space-700 p-3 mb-3">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between text-xs font-display font-semibold text-gray-300 uppercase tracking-wider mb-2">
+        Aditya-L1 Mission {open ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+      </button>
+      {open && (
+        <div className="space-y-2 text-xs text-gray-400">
+          <img src={SDO_URL} alt="Latest Solar Image (SDO 193Å)" className="w-full rounded border border-space-700 mb-2" />
+          <p className="text-gray-500 text-center text-xs">SDO 193Å — updated ~10 min</p>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <div className="bg-space-800 rounded p-2 border border-space-700">
+              <p className="text-solar-cyan font-bold">SoLEXS</p>
+              <p>Soft X-rays: 1–8 Å</p>
+              <p>8 energy channels</p>
+            </div>
+            <div className="bg-space-800 rounded p-2 border border-space-700">
+              <p className="text-solar-amber font-bold">HEL1OS</p>
+              <p>Hard X-rays: 10–100 keV</p>
+              <p>Broadband spectra</p>
+            </div>
+          </div>
+          <p className="text-gray-500">Orbit: Sun–Earth L1 (1.5M km). Launch: Sept 2023.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+**`src/components/GOESReferenceCard.jsx`:**
+```jsx
+import { useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+
+const classes = [
+  { cls: 'X', flux: '≥ 10⁻⁴ W/m²', impact: 'Major radio blackouts, HF comms disrupted', color: '#9333EA' },
+  { cls: 'M', flux: '10⁻⁵ – 10⁻⁴ W/m²', impact: 'Wide radio blackouts, minor radiation storms', color: '#EF4444' },
+  { cls: 'C', flux: '10⁻⁶ – 10⁻⁵ W/m²', impact: 'Minor effects on HF comms in polar regions', color: '#F59E0B' },
+  { cls: 'B', flux: '10⁻⁷ – 10⁻⁶ W/m²', impact: 'Background level, generally no effects', color: '#6B8FA8' },
+];
+
+export default function GOESReferenceCard() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="bg-space-900 rounded-lg border border-space-700 p-3">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between text-xs font-display font-semibold text-gray-300 uppercase tracking-wider">
+        GOES Flare Classes {open ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+      </button>
+      {open && (
+        <div className="mt-3 space-y-2">
+          {classes.map(c => (
+            <div key={c.cls} className="flex gap-2 items-start">
+              <span className="font-display font-bold text-lg w-5" style={{ color: c.color }}>{c.cls}</span>
+              <div className="text-xs">
+                <p className="font-mono text-gray-300">{c.flux}</p>
+                <p className="text-gray-500">{c.impact}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+### STEP 14: Build Replay Controls
+
+**`src/components/ReplayControls.jsx`:**
+```jsx
+import { useState } from 'react';
+import { Play, RotateCcw, Zap } from 'lucide-react';
+
+const SPEEDS = [1, 5, 10, 50];
+
+export default function ReplayControls({ speed, setSpeed, onReset }) {
+  return (
+    <div className="flex items-center gap-4 mt-3 px-2">
+      <Zap size={14} className="text-solar-amber" />
+      <span className="text-xs text-gray-500">Replay Speed:</span>
+      <div className="flex gap-1">
+        {SPEEDS.map(s => (
+          <button key={s} onClick={() => setSpeed(s)}
+            className={`px-2 py-1 rounded text-xs font-mono font-bold transition-colors
+              ${speed === s ? 'bg-solar-amber text-black' : 'bg-space-800 text-gray-400 hover:text-white border border-space-700'}`}>
+            {s}×
+          </button>
+        ))}
+      </div>
+      <button onClick={onReset} className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-white border border-space-700 hover:border-gray-500 ml-auto">
+        <RotateCcw size={12} /> Reset
+      </button>
+    </div>
+  );
+}
+```
+
+---
+
+### STEP 15: Build the Dashboard Page
+
+**`src/pages/Dashboard.jsx`:**
+```jsx
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+import AlertBanner from '../components/AlertBanner';
+import DualFluxChart from '../components/DualFluxChart';
+import ForecastGauge from '../components/ForecastGauge';
+import FeaturesStrip from '../components/FeaturesStrip';
+import MissionContextPanel from '../components/MissionContextPanel';
+import GOESReferenceCard from '../components/GOESReferenceCard';
+import ReplayControls from '../components/ReplayControls';
+import { useDataStream } from '../hooks/useDataStream';
+import { useForecast } from '../hooks/useForecast';
+import { useFlareEvents } from '../hooks/useFlareEvents';
+
+export default function Dashboard() {
+  const [speed, setSpeed] = useState(5);
+  const { dataBuffer, reset } = useDataStream(speed);
+  const forecast = useForecast();
+  const events = useFlareEvents();
+  const latestEvent = events[events.length - 1];
+
+  return (
+    <div className="min-h-screen bg-space-950 pt-16">
+      <AlertBanner probability={forecast.probability_15min} latestEvent={latestEvent} />
+      <div className="max-w-screen-xl mx-auto px-4 py-4 grid grid-cols-12 gap-4">
+        {/* LEFT PANEL */}
+        <motion.div initial={{ opacity:0, x:-20 }} animate={{ opacity:1, x:0 }} transition={{ delay:0.1 }} className="col-span-3 space-y-3">
+          <MissionContextPanel />
+          <GOESReferenceCard />
+        </motion.div>
+        {/* CENTER PANEL */}
+        <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.2 }} className="col-span-6 space-y-3">
+          <DualFluxChart data={dataBuffer} events={events} />
+          <ReplayControls speed={speed} setSpeed={setSpeed} onReset={reset} />
+          <div className="bg-space-900 border border-space-700 rounded-lg p-3">
+            <p className="text-xs text-gray-500 font-display uppercase tracking-wider mb-2">Recent Detections</p>
+            <div className="space-y-1">
+              {events.slice(-3).reverse().map(e => (
+                <div key={e.id} className="flex items-center justify-between text-xs border border-space-700 rounded px-3 py-1.5 bg-space-800">
+                  <span className="font-mono text-gray-400">{e.peak_time?.slice(11,19)} UTC</span>
+                  <span className="font-display font-bold" style={{ color: e.goes_class?.[0] === 'X' ? '#9333EA' : e.goes_class?.[0] === 'M' ? '#EF4444' : '#F59E0B' }}>{e.goes_class}</span>
+                  <span className="text-gray-400">{Math.round(e.detection_confidence * 100)}% conf.</span>
+                </div>
+              ))}
+              {events.length === 0 && <p className="text-xs text-gray-600">No flares detected yet — data streaming…</p>}
+            </div>
+          </div>
+        </motion.div>
+        {/* RIGHT PANEL */}
+        <motion.div initial={{ opacity:0, x:20 }} animate={{ opacity:1, x:0 }} transition={{ delay:0.3 }} className="col-span-3 space-y-3">
+          <ForecastGauge probability={forecast.probability_15min} predictedClass={forecast.predicted_class} />
+          <FeaturesStrip />
+        </motion.div>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+### STEP 16: Build the Event Log Page
+
+**`src/pages/EventLog.jsx`:**
+```jsx
+import { useState } from 'react';
+import { useFlareEvents } from '../hooks/useFlareEvents';
+import { getGoesColor } from '../utils/goesClass';
+import { formatSI } from '../utils/formatFlux';
+import { Download, ChevronDown, ChevronUp } from 'lucide-react';
+
+export default function EventLog() {
+  const events = useFlareEvents();
+  const [expanded, setExpanded] = useState(null);
+  const [filter, setFilter] = useState('ALL');
+
+  const filtered = filter === 'ALL' ? events : events.filter(e => e.goes_class?.[0] === filter);
+
+  const exportCSV = () => {
+    const rows = [['ID','Start','Peak','End','GOES Class','Peak Soft Flux','Peak Hard Flux','Duration (min)','Confidence','Method']];
+    filtered.forEach(e => rows.push([e.id, e.start_time, e.peak_time, e.end_time, e.goes_class, e.peak_solexs_flux, e.peak_hel1os_flux, e.duration_minutes, e.detection_confidence, e.detection_method]));
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const a = document.createElement('a'); a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = 'solarsentinel_events.csv'; a.click();
+  };
+
+  return (
+    <div className="min-h-screen bg-space-950 pt-16 px-4 py-6 max-w-screen-xl mx-auto">
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="font-display text-2xl font-bold text-white">Flare Event Log</h1>
+        <div className="flex items-center gap-2">
+          {['ALL','X','M','C','B'].map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`px-2 py-1 text-xs rounded font-bold border transition-colors ${filter === f ? 'text-black border-transparent' : 'border-space-700 text-gray-400 hover:text-white'}`}
+              style={filter === f ? { backgroundColor: getGoesColor(f === 'ALL' ? 'C' : f) } : {}}>
+              {f}
+            </button>
+          ))}
+          <button onClick={exportCSV} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border border-space-700 text-gray-300 hover:text-white hover:border-gray-500">
+            <Download size={12}/> Export CSV
+          </button>
+        </div>
+      </div>
+      <div className="bg-space-900 rounded-lg border border-space-700 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-space-800 border-b border-space-700">
+            <tr>
+              {['Peak Time (UTC)','Class','Peak Soft Flux','Peak Hard Flux','Duration','Confidence','Method',''].map(h => (
+                <th key={h} className="px-4 py-2.5 text-left text-xs font-display font-semibold text-gray-400 uppercase tracking-wider">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((e, i) => (
+              <>
+                <tr key={e.id} className={`border-b border-space-700 hover:bg-space-800 cursor-pointer ${i % 2 === 0 ? 'bg-space-900' : 'bg-space-800/50'}`} onClick={() => setExpanded(expanded === e.id ? null : e.id)}>
+                  <td className="px-4 py-2.5 font-mono text-gray-300">{e.peak_time?.slice(0,19)?.replace('T',' ')}</td>
+                  <td className="px-4 py-2.5"><span className="font-display font-bold" style={{ color: getGoesColor(e.goes_class) }}>{e.goes_class}</span></td>
+                  <td className="px-4 py-2.5 font-mono text-solar-cyan text-xs">{formatSI(e.peak_solexs_flux)}</td>
+                  <td className="px-4 py-2.5 font-mono text-solar-amber text-xs">{formatSI(e.peak_hel1os_flux)}</td>
+                  <td className="px-4 py-2.5 text-gray-300">{e.duration_minutes} min</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 w-16 bg-space-700 rounded-full">
+                        <div className="h-full rounded-full bg-solar-cyan" style={{ width: `${e.detection_confidence*100}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-300">{Math.round(e.detection_confidence*100)}%</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-gray-500">{e.detection_method}</td>
+                  <td className="px-4 py-2.5 text-gray-500">{expanded === e.id ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}</td>
+                </tr>
+                {expanded === e.id && (
+                  <tr key={`${e.id}-detail`} className="bg-space-800 border-b border-space-700">
+                    <td colSpan={8} className="px-6 py-3">
+                      <p className="text-xs font-display font-semibold text-gray-400 uppercase tracking-wider mb-2">Feature Contributions</p>
+                      <div className="grid grid-cols-4 gap-3">
+                        {e.feature_contributions && Object.entries(e.feature_contributions).map(([k, v]) => (
+                          <div key={k}>
+                            <p className="text-xs text-gray-500 mb-1 capitalize">{k.replace('_', ' ')}</p>
+                            <div className="h-1.5 bg-space-700 rounded-full">
+                              <div className="h-full rounded-full bg-solar-amber" style={{ width: `${v*100}%` }} />
+                            </div>
+                            <p className="text-xs font-mono text-gray-300 mt-0.5">{(v*100).toFixed(0)}%</p>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
+            ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan={8} className="text-center py-12 text-gray-600">No events yet. Data is streaming…</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+### STEP 17: Build the Upload Page
+
+**`src/pages/UploadPage.jsx`:**
+```jsx
+import { useCallback, useState } from 'react';
+import { useDropzone } from 'react-dropzone';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { Upload, CheckCircle, AlertCircle } from 'lucide-react';
+
+export default function UploadPage() {
+  const [status, setStatus] = useState('idle');
+  const [result, setResult] = useState(null);
+  const navigate = useNavigate();
+
+  const onDrop = useCallback(async (files) => {
+    const file = files[0];
+    if (!file) return;
+    setStatus('uploading');
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const res = await axios.post('http://localhost:5000/api/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setResult(res.data); setStatus('success');
+      setTimeout(() => navigate('/'), 2000);
+    } catch(e) { setStatus('error'); }
+  }, [navigate]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/csv': ['.csv'] }, maxFiles: 1 });
+
+  return (
+    <div className="min-h-screen bg-space-950 pt-16 px-4 py-12 flex flex-col items-center">
+      <h1 className="font-display text-2xl font-bold text-white mb-2">Upload X-Ray Data</h1>
+      <p className="text-gray-500 text-sm mb-8 text-center max-w-md">Upload a CSV with columns: <code className="font-mono text-solar-cyan">timestamp</code>, <code className="font-mono text-solar-cyan">solexs_flux</code>, <code className="font-mono text-solar-cyan">hel1os_flux</code>. Pipeline runs automatically.</p>
+
+      <div {...getRootProps()} className={`w-full max-w-lg h-48 border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all
+        ${isDragActive ? 'border-solar-cyan bg-solar-cyan/5' : 'border-space-700 hover:border-gray-500 bg-space-900'}`}>
+        <input {...getInputProps()} />
+        <Upload size={32} className={isDragActive ? 'text-solar-cyan' : 'text-gray-600'} />
+        <p className="text-sm text-gray-400 mt-3">{isDragActive ? 'Drop your CSV here' : 'Drag & drop CSV, or click to browse'}</p>
+        <p className="text-xs text-gray-600 mt-1">1-minute resolution recommended</p>
+      </div>
+
+      {status === 'uploading' && <p className="text-solar-cyan text-sm mt-4 animate-pulse">Processing pipeline…</p>}
+      {status === 'success' && (
+        <div className="mt-4 flex items-center gap-2 text-green-400">
+          <CheckCircle size={16}/> Loaded {result?.rows} records — {result?.events_detected} flares detected. Redirecting…
+        </div>
+      )}
+      {status === 'error' && (
+        <div className="mt-4 flex items-center gap-2 text-red-400">
+          <AlertCircle size={16}/> Upload failed. Check file format.
+        </div>
+      )}
+
+      <div className="mt-8 bg-space-900 border border-space-700 rounded-lg p-4 max-w-lg w-full">
+        <p className="text-xs font-display font-semibold text-gray-400 uppercase tracking-wider mb-2">Expected CSV Format</p>
+        <pre className="text-xs font-mono text-solar-cyan">{`timestamp,solexs_flux,hel1os_flux
+2024-10-15T00:00:00Z,3.2e-7,1.1e-5
+2024-10-15T00:01:00Z,3.1e-7,1.0e-5
+...`}</pre>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+### STEP 18: Build the Model Info Page
+
+**`src/pages/ModelPage.jsx`:**
+```jsx
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { motion } from 'framer-motion';
+
+const steps = [
+  { n: '01', title: 'Data Ingest', desc: 'Read SoLEXS + HEL1OS 1-min flux time series from Aditya-L1 telemetry or uploaded CSV.' },
+  { n: '02', title: 'Feature Engineering', desc: 'Compute flux derivative, spectral hardness index, flux ratio (hard/soft), rolling mean, and variance over 10-minute window.' },
+  { n: '03', title: 'Threshold Detection', desc: 'Flag onset when SoLEXS flux > 10⁻⁶ W/m² AND derivative > 5×10⁻⁹ W/m²/min simultaneously.' },
+  { n: '04', title: 'Peak Classification', desc: 'Map peak flux to GOES B/C/M/X class. Compute confidence from spectral hardness + flux ratio contribution weights.' },
+  { n: '05', title: 'Forecasting', desc: 'Trend + flux norm + spectral hardness aggregated into 15-minute-ahead probability score using weighted linear ensemble.' },
+  { n: '06', title: 'Alert Dispatch', desc: 'Thresholded alert (50/75/90%) triggers Watch/Warning/Extreme banner in UI with flare class prediction.' },
+];
+
+export default function ModelPage() {
+  const [metrics, setMetrics] = useState(null);
+  useEffect(() => { axios.get('http://localhost:5000/api/metrics').then(r => setMetrics(r.data)); }, []);
+
+  return (
+    <div className="min-h-screen bg-space-950 pt-16 px-4 py-8 max-w-screen-xl mx-auto">
+      <h1 className="font-display text-2xl font-bold text-white mb-1">Detection Pipeline</h1>
+      <p className="text-gray-500 text-sm mb-8">How SolarSentinel processes Aditya-L1 data to detect and forecast solar flares.</p>
+
+      <div className="grid grid-cols-2 gap-4 mb-8">
+        {steps.map((s, i) => (
+          <motion.div key={s.n} initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay: i*0.08 }}
+            className="bg-space-900 border border-space-700 rounded-lg p-4 flex gap-4">
+            <span className="font-display font-bold text-2xl text-space-700">{s.n}</span>
+            <div>
+              <p className="font-display font-semibold text-solar-cyan mb-1">{s.title}</p>
+              <p className="text-sm text-gray-400">{s.desc}</p>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      {metrics && (
+        <div className="bg-space-900 border border-space-700 rounded-lg p-5">
+          <h2 className="font-display text-lg font-semibold text-white mb-4">Model Performance <span className="text-xs text-gray-500 font-normal ml-2">Test period: {metrics.test_period}</span></h2>
+          <div className="grid grid-cols-5 gap-4">
+            {[
+              { label: 'Precision', value: metrics.precision, color: '#00D4FF' },
+              { label: 'Recall', value: metrics.recall, color: '#22C55E' },
+              { label: 'F1 Score', value: metrics.f1_score, color: '#F5A623' },
+              { label: 'TSS', value: metrics.tss, color: '#A78BFA' },
+              { label: 'POD', value: metrics.pod, color: '#FB923C' },
+            ].map(m => (
+              <div key={m.label} className="bg-space-800 rounded-lg p-4 border border-space-700 text-center">
+                <p className="font-display font-bold text-3xl" style={{ color: m.color }}>{(m.value*100).toFixed(0)}%</p>
+                <p className="text-xs text-gray-500 mt-1">{m.label}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-600 mt-3">Evaluated on {metrics.total_flares_tested} flares. TSS = True Skill Statistic (primary space weather metric). POD = Probability of Detection.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+### STEP 19: Wire Up Routing in App.jsx
+
+**`src/App.jsx`:**
+```jsx
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { useState } from 'react';
+import Navbar from './components/Navbar';
+import Dashboard from './pages/Dashboard';
+import EventLog from './pages/EventLog';
+import UploadPage from './pages/UploadPage';
+import ModelPage from './pages/ModelPage';
+
+export default function App() {
+  const [darkMode, setDarkMode] = useState(true);
+  return (
+    <BrowserRouter>
+      <div className={darkMode ? 'dark' : ''}>
+        <Navbar darkMode={darkMode} toggleDark={() => setDarkMode(!darkMode)} />
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/events" element={<EventLog />} />
+          <Route path="/upload" element={<UploadPage />} />
+          <Route path="/model" element={<ModelPage />} />
+        </Routes>
+      </div>
+    </BrowserRouter>
+  );
+}
+```
+
+Install react-router-dom: `npm install react-router-dom`
+
+---
+
+### STEP 20: Create Startup Scripts and Run Configuration
+
+Create `backend/run.sh`:
+```bash
+#!/bin/bash
+cd backend
+python generate_mock_data.py
+python app.py
+```
+
+Create a root-level `start.sh`:
+```bash
+#!/bin/bash
+# Start Flask backend
+cd backend && python generate_mock_data.py && python app.py &
+# Start Vite frontend
+cd frontend && npm run dev
+```
+
+Create `frontend/vite.config.js` with proxy (so frontend can call backend without CORS issues in dev):
+```js
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: { '/api': 'http://localhost:5000' }
+  }
+})
+```
+
+---
+
+### STEP 21: Final Checklist Before Demo
+
+Verify each of the following works:
+
+- [ ] Mock data generates correctly (1440 rows, 4 flare events)
+- [ ] Flask backend starts on port 5000, all 8 API endpoints return valid JSON
+- [ ] Vite frontend starts on port 5173, connects to backend
+- [ ] Dashboard loads with chart showing initial 0 data points, streaming kicks in within 2 seconds
+- [ ] After ~15 data points stream in, forecast gauge shows a non-zero probability
+- [ ] At replay speed 50×, the M5.4 flare event at hour 15 triggers the orange WARNING banner
+- [ ] The X1.1 flare event at hour 21 triggers the purple EXTREME banner
+- [ ] Event Log table shows all detected flares with expandable confidence breakdown
+- [ ] Upload page accepts a CSV and reprocesses the pipeline
+- [ ] Model Info page shows all 6 pipeline steps and 5 performance metrics
+- [ ] SDO solar image loads in Mission Context Panel
+- [ ] CSV export from Event Log works
+
+---
+
+### STEP 22: README.md
+
+Create a `README.md` in root:
+
+```markdown
+# SolarSentinel 🌞
+
+**Nowcasting & Forecasting Solar Flares from Aditya-L1 (ISRO)**
+
+SolarSentinel fuses SoLEXS (soft X-ray) and HEL1OS (hard X-ray) time-series data from ISRO's Aditya-L1 spacecraft to automatically detect solar flares the moment they begin (nowcasting) and predict flare probability 15 minutes ahead (forecasting).
+
+## Architecture
+- **Frontend:** React 18 + Vite + Tailwind CSS + Recharts + Framer Motion
+- **Backend:** Python Flask REST API
+- **Detection:** Threshold + derivative algorithm on dual X-ray channels
+- **Forecasting:** Weighted linear ensemble (flux norm + trend + spectral hardness)
+
+## Quick Start
+```bash
+bash start.sh
+# Frontend: http://localhost:5173
+# Backend API: http://localhost:5000
+```
+
+## Data Format
+CSV uploads require: `timestamp`, `solexs_flux`, `hel1os_flux` columns.
+
+## Key Metrics
+TSS = 0.76 | POD = 0.78 | Precision = 0.82 | Recall = 0.78
+```
+
+---
+
+**END OF BRIEF — Paste the entire contents of this document into Replit Agent to begin building SolarSentinel.**

@@ -1,0 +1,1 @@
+- [Orval binary/File type collision](orval-binary-file.md) — OpenAPI multipart/binary schemas generate File/Blob types that break Node tsconfig; omit requestBody schema for file uploads.

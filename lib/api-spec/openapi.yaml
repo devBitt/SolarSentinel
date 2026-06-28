@@ -3,13 +3,25 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: SolarSentinel API — solar flare nowcasting & forecasting
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: data
+    description: X-ray flux time-series data
+  - name: events
+    description: Detected flare events
+  - name: forecast
+    description: Short-term flare probability forecast
+  - name: features
+    description: Derived model features
+  - name: replay
+    description: Replay / simulation control
+  - name: metrics
+    description: Model performance metrics
 paths:
   /healthz:
     get:
@@ -24,6 +36,134 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /data/stream:
+    get:
+      operationId: getDataStream
+      tags: [data]
+      summary: Get next streamed data point
+      description: Returns the next data point for live streaming simulation
+      responses:
+        "200":
+          description: Next flux data point
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamResponse"
+
+  /data/range:
+    get:
+      operationId: getDataRange
+      tags: [data]
+      summary: Get data for a time index range
+      parameters:
+        - name: start
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: end
+          in: query
+          schema: { type: integer, default: 60 }
+      responses:
+        "200":
+          description: Data range
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataRangeResponse"
+
+  /data/full:
+    get:
+      operationId: getDataFull
+      tags: [data]
+      summary: Get full dataset
+      responses:
+        "200":
+          description: Full dataset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataRangeResponse"
+
+  /events:
+    get:
+      operationId: getFlareEvents
+      tags: [events]
+      summary: Get all detected flare events
+      responses:
+        "200":
+          description: Flare event list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlareEventsResponse"
+
+  /forecast:
+    get:
+      operationId: getForecast
+      tags: [forecast]
+      summary: Get 15-minute ahead flare probability forecast
+      responses:
+        "200":
+          description: Forecast output
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForecastOutput"
+
+  /features/latest:
+    get:
+      operationId: getLatestFeatures
+      tags: [features]
+      summary: Get latest derived model features
+      responses:
+        "200":
+          description: Latest feature values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeatureSnapshot"
+
+  /replay/reset:
+    post:
+      operationId: resetReplay
+      tags: [replay]
+      summary: Reset replay to beginning
+      responses:
+        "200":
+          description: Reset confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayStatus"
+
+  /metrics:
+    get:
+      operationId: getModelMetrics
+      tags: [metrics]
+      summary: Get model performance metrics
+      responses:
+        "200":
+          description: Model metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelMetrics"
+
+  /upload:
+    post:
+      operationId: uploadData
+      tags: [data]
+      summary: Upload CSV data for analysis
+      responses:
+        "200":
+          description: Upload result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadResult"
+        "400":
+          description: Bad request
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +171,178 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    FluxDataPoint:
+      type: object
+      required: [timestamp, solexs_flux, hel1os_flux]
+      properties:
+        timestamp:
+          type: string
+        solexs_flux:
+          type: number
+        hel1os_flux:
+          type: number
+        solexs_deriv:
+          type: ["number", "null"]
+        hel1os_deriv:
+          type: ["number", "null"]
+        flux_ratio:
+          type: ["number", "null"]
+        spectral_hardness:
+          type: ["number", "null"]
+        rolling_mean:
+          type: ["number", "null"]
+        rolling_var:
+          type: ["number", "null"]
+
+    StreamResponse:
+      type: object
+      required: [data, total, current_index]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FluxDataPoint"
+        total:
+          type: integer
+        current_index:
+          type: integer
+
+    DataRangeResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FluxDataPoint"
+
+    FeatureContributions:
+      type: object
+      properties:
+        flux_derivative:
+          type: ["number", "null"]
+        flux_ratio:
+          type: ["number", "null"]
+        spectral_hardness:
+          type: ["number", "null"]
+        rolling_variance:
+          type: ["number", "null"]
+
+    FlareEvent:
+      type: object
+      required: [id, start_time, peak_time, end_time, peak_solexs_flux, peak_hel1os_flux, goes_class, duration_minutes, detection_confidence, detection_method]
+      properties:
+        id:
+          type: string
+        start_time:
+          type: string
+        peak_time:
+          type: string
+        end_time:
+          type: string
+        peak_solexs_flux:
+          type: number
+        peak_hel1os_flux:
+          type: number
+        goes_class:
+          type: string
+        duration_minutes:
+          type: number
+        detection_confidence:
+          type: number
+        detection_method:
+          type: string
+        feature_contributions:
+          $ref: "#/components/schemas/FeatureContributions"
+        forecast_probability_at_onset:
+          type: ["number", "null"]
+
+    FlareEventsResponse:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/FlareEvent"
+
+    ForecastOutput:
+      type: object
+      required: [timestamp, probability_15min, predicted_class, model]
+      properties:
+        timestamp:
+          type: string
+        probability_15min:
+          type: number
+        predicted_class:
+          type: string
+        model:
+          type: string
+        confidence_interval_low:
+          type: ["number", "null"]
+        confidence_interval_high:
+          type: ["number", "null"]
+
+    FeatureSnapshot:
+      type: object
+      required: [timestamp, solexs_flux, hel1os_flux]
+      properties:
+        timestamp:
+          type: string
+        solexs_flux:
+          type: number
+        hel1os_flux:
+          type: number
+        flux_ratio:
+          type: ["number", "null"]
+        spectral_hardness:
+          type: ["number", "null"]
+        solexs_deriv:
+          type: ["number", "null"]
+        rolling_mean:
+          type: ["number", "null"]
+        rolling_var:
+          type: ["number", "null"]
+
+    ReplayStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+
+    ModelMetrics:
+      type: object
+      required: [precision, recall, f1_score, tss, pod, far, test_period, total_flares_tested, model_version]
+      properties:
+        precision:
+          type: number
+        recall:
+          type: number
+        f1_score:
+          type: number
+        tss:
+          type: number
+        pod:
+          type: number
+        far:
+          type: number
+        test_period:
+          type: string
+        total_flares_tested:
+          type: integer
+        model_version:
+          type: string
+
+    UploadResult:
+      type: object
+      required: [status, rows, events_detected]
+      properties:
+        status:
+          type: string
+        rows:
+          type: integer
+        events_detected:
+          type: integer

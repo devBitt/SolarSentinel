@@ -1,5 +1,8 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { initializeSolarData } from "./lib/solarData";
+
+initializeSolarData();
 
 const rawPort = process.env["PORT"];
 
