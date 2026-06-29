@@ -284,9 +284,10 @@ function SolarGlobeCanvas({ events, hoveredId, onHover }: SolarGlobeCanvasProps)
 
 interface SolarGlobePanelProps {
   events: FlareEvent[];
+  sourceLabel?: string; // "Demo" | "GOES-18 LIVE" | "Custom Upload"
 }
 
-export function SolarGlobePanel({ events }: SolarGlobePanelProps) {
+export function SolarGlobePanel({ events, sourceLabel }: SolarGlobePanelProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const onHover = useCallback((id: string | null) => setHoveredId(id), []);
   const hoveredEvent = events.find(e => e.id === hoveredId) ?? null;
@@ -304,6 +305,13 @@ export function SolarGlobePanel({ events }: SolarGlobePanelProps) {
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
           <h3 className="font-display font-semibold text-sm tracking-wide">Active Region Map</h3>
           <span className="text-muted-foreground text-xs font-mono">— Heliographic View</span>
+          {sourceLabel && (
+            <span className="ml-2 text-[9px] font-mono px-1.5 py-0.5 rounded border"
+              style={{ color: sourceLabel === "GOES-18 LIVE" ? "#00D4FF" : "#F5A623",
+                       borderColor: sourceLabel === "GOES-18 LIVE" ? "#00D4FF" : "#F5A623" }}>
+              {sourceLabel === "GOES-18 LIVE" ? "LIVE" : "DEMO"}
+            </span>
+          )}
         </div>
         <span className="text-muted-foreground text-[10px] font-mono uppercase tracking-widest select-none">Drag to rotate</span>
       </div>
@@ -332,7 +340,7 @@ export function SolarGlobePanel({ events }: SolarGlobePanelProps) {
               <div className="text-[11px] font-mono text-muted-foreground space-y-0.5">
                 <div>Peak: <span className="text-[#00D4FF]">{hoveredEvent.peak_solexs_flux.toExponential(1)} W/m²</span></div>
                 <div>Conf: <span className="text-foreground">{(hoveredEvent.detection_confidence * 100).toFixed(0)}%</span></div>
-                <div>Time: <span className="text-foreground">{new Date(hoveredEvent.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
+                <div>Time: <span className="text-foreground">{new Date(hoveredEvent.start_time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span></div>
               </div>
             </motion.div>
           )}
@@ -372,7 +380,7 @@ export function SolarGlobePanel({ events }: SolarGlobePanelProps) {
                     </span>
                   </div>
                   <div className="text-muted-foreground font-mono text-[10px] truncate">
-                    {new Date(evt.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {new Date(evt.start_time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                   </div>
                 </div>
               </div>

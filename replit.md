@@ -43,12 +43,28 @@ An automated pipeline that ingests combined Soft and Hard X-ray time-series data
 - NASA SDO image embedded directly as `<img>` (no API key needed)
 - NOAA 3-day forecast fetched client-side (free, CORS-enabled)
 
+## Data sources
+
+### Live (GOES-18)
+- `/api/data/goes-live` fetches `services.swpc.noaa.gov/json/goes/primary/xrays-1-day.json`
+- Band mapping: GOES long (0.1-0.8 nm) -> solexs_flux, short (0.05-0.4 nm) -> hel1os_flux
+- 90-second server-side cache; dashboard refreshes on a countdown ticker
+- `/api/events/noaa-archive` fetches 7-day verified flare catalog from NOAA SWPC
+
+### Synthetic (Demo)
+- Fixed epoch: 2024-10-15T00:00:00Z, 1440 points, 3 flares, seeded LCG
+- All dashboard panels show DEMO badge when active
+
+### Upload
+- Accepts CSV with auto-detected formats: ISSDC SoLEXS, GOES Cleaned, SolarSentinel native, positional
+- Comment lines (`#`) skipped automatically
+
 ## Product
 
-- **Dashboard** (`/`): Live dual-channel X-ray chart, forecast probability gauge, derived features, mission context with NASA SDO image, GOES classification reference, replay speed controls
-- **Event Log** (`/events`): Full sortable/filterable table of detected flare events, expandable confidence breakdown, CSV export
-- **Upload & Analyze** (`/upload`): Drag-and-drop CSV upload for custom SoLEXS/HEL1OS data, runs through full detection pipeline
-- **Model Info** (`/model`): Algorithm flowchart, parameter table, model performance metrics (Precision/Recall/F1/TSS/POD/FAR)
+- **Dashboard** (`/`): Live dual-channel X-ray chart, forecast probability gauge, derived features, mission context with NASA SDO image, GOES classification reference, replay speed controls, **GOES-18 LIVE / DEMO toggle with refresh countdown**, 3D Canvas solar globe with heliographic flare markers, solar wind + particle flux panel with SEP detection
+- **Event Log** (`/events`): Full table of detected flare events with expandable confidence breakdown, **class distribution summary bar**, CSV export, **NOAA SWPC Archive tab** with real verified flares
+- **Upload & Analyze** (`/upload`): Drag-and-drop CSV upload with **4-format auto-detection**, client-side preview table, sample CSV download, mapped column feedback
+- **Model Info** (`/model`): Detection pipeline flowchart, **full Aditya-L1 instrument specification cards**, **10-row algorithm parameter table with rationales**, **validation vs NOAA SWPC baseline** with score comparison bars
 
 ## User preferences
 
@@ -59,6 +75,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 - The detection algorithm resets replay index on upload — all endpoints reflect the new data immediately
 - The OpenAPI `upload` endpoint has no `requestBody` schema to avoid `File`/`Blob` TypeScript issues with Orval's codegen; upload uses raw FormData on the frontend
 - NOAA space weather APIs are public/CORS-enabled but may be slow or unavailable
+- GOES-18 data is a proxy for SoLEXS/HEL1OS — same wavelength bands but different detector geometry
 
 ## Pointers
 
