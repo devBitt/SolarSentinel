@@ -19,6 +19,53 @@ import {
 const GOES_XRAY_URL = "https://services.swpc.noaa.gov/json/goes/primary/xrays-1-day.json";
 let goesCache: { payload: unknown; ts: number } | null = null;
 
+/* Persistent event store — flare timestamps must never drift */
+const goesEventStore = new Map<string, { event: any; lastSeen: number }>();
+
+function mergeGoesEvents(freshEvents: any[]): any[] {
+  const now = Date.now();
+  const EVENT_TTL_MS = 48 * 60 * 60 * 1000; // keep for 48h
+
+  // Mark existing events that still appear in fresh data
+  const freshKeys = new Set(freshEvents.map(e => e.peak_time));
+  for (const [key, entry] of goesEventStore.entries()) {
+    if (freshKeys.has(key)) {
+      entry.lastSeen = now;
+    }
+  }
+
+  // Add or update events by peak_time — keep earliest start, latest end, never drift
+  for (const evt of freshEvents) {
+    const key = evt.peak_time;
+    const existing = goesEventStore.get(key);
+    if (existing) {
+      const oldStart = new Date(existing.event.start_time).getTime();
+      const newStart = new Date(evt.start_time).getTime();
+      if (newStart < oldStart) existing.event.start_time = evt.start_time;
+
+      const oldEnd = new Date(existing.event.end_time).getTime();
+      const newEnd = new Date(evt.end_time).getTime();
+      if (newEnd > oldEnd) existing.event.end_time = evt.end_time;
+
+      existing.lastSeen = now;
+    } else {
+      goesEventStore.set(key, { event: evt, lastSeen: now });
+    }
+  }
+
+  // Remove expired events
+  for (const [key, entry] of goesEventStore.entries()) {
+    if (now - entry.lastSeen > EVENT_TTL_MS) {
+      goesEventStore.delete(key);
+    }
+  }
+
+  // Return all stored events sorted by start_time
+  return Array.from(goesEventStore.values())
+    .map(e => e.event)
+    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+}
+
 async function fetchGoesLive() {
   const now = Date.now();
   if (goesCache && now - goesCache.ts < 90_000) return goesCache.payload;
@@ -45,7 +92,8 @@ async function fetchGoesLive() {
     }));
 
   const processed = computeFeatures(rawRows);
-  const events    = detectFlares(processed);
+  const freshEvents = detectFlares(processed);
+  const events    = mergeGoesEvents(freshEvents); // persist & merge
   const latest    = processed[processed.length - 1] as FluxDataPoint | undefined;
   const forecast  = computeForecast(processed, processed.length - 1);
 
