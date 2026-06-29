@@ -340,7 +340,7 @@ export function SolarGlobePanel({ events, sourceLabel }: SolarGlobePanelProps) {
               <div className="text-[11px] font-mono text-muted-foreground space-y-0.5">
                 <div>Peak: <span className="text-[#00D4FF]">{hoveredEvent.peak_solexs_flux.toExponential(1)} W/m²</span></div>
                 <div>Conf: <span className="text-foreground">{(hoveredEvent.detection_confidence * 100).toFixed(0)}%</span></div>
-                <div>Time: <span className="text-foreground">{new Date(hoveredEvent.start_time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span></div>
+                <div>Time: <span className="text-foreground">{new Date(hoveredEvent.start_time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" })}</span></div>
               </div>
             </motion.div>
           )}
@@ -380,7 +380,7 @@ export function SolarGlobePanel({ events, sourceLabel }: SolarGlobePanelProps) {
                     </span>
                   </div>
                   <div className="text-muted-foreground font-mono text-[10px] truncate">
-                    {new Date(evt.start_time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    {new Date(evt.start_time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" })}
                   </div>
                 </div>
               </div>

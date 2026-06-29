@@ -99,6 +99,11 @@ export default function Dashboard() {
 
   const recentEvents = activeEvents.slice(0, 5);
 
+  /* GOES data window range */
+  const goesWindow = goesMode && goesData?.data?.length
+    ? { start: goesData.data[0].timestamp, end: goesData.data[goesData.data.length - 1].timestamp }
+    : null;
+
   return (
     <div className="min-h-screen bg-background text-foreground pt-16">
       <Navbar />
@@ -218,8 +223,13 @@ export default function Dashboard() {
               >
                 <Satellite className="w-4 h-4 text-[#00D4FF] flex-shrink-0" />
                 <span className="text-muted-foreground">
-                  Showing real GOES-18 X-ray flux · 0.1–0.8 nm (soft) ≈ SoLEXS · 0.05–0.4 nm (hard) ≈ HEL1OS ·
-                  Same wavelength bands as Aditya-L1 instruments · Refreshes every 90 s
+                  Real GOES-18 X-ray flux · 0.1–0.8 nm (soft) ≈ SoLEXS · 0.05–0.4 nm (hard) ≈ HEL1OS ·
+                  {goesWindow && (
+                    <>
+                      Data window: <span className="text-foreground">{format(parseISO(goesWindow.start), "MMM d")} – {format(parseISO(goesWindow.end), "MMM d")} (UTC)</span> ·
+                    </>
+                  )}
+                  Refreshes every 90 s · All times shown in UTC
                 </span>
               </motion.div>
             )}
@@ -247,7 +257,7 @@ export default function Dashboard() {
                     <tbody>
                       {recentEvents.map((evt: any, i: number) => (
                         <tr key={evt.id} className={`${i % 2 === 0 ? "bg-[#0D1B2A]" : "bg-[#101F30]"} border-b border-border/50 text-sm font-mono`}>
-                          <td className="px-3 py-2">{format(parseISO(evt.start_time), "HH:mm")}</td>
+                          <td className="px-3 py-2">{format(parseISO(evt.start_time), "MMM d, HH:mm")}</td>
                           <td className="px-3 py-2">
                             <span className="px-2 py-0.5 rounded-full text-[10px] text-black font-bold" style={{ backgroundColor: getGoesColor(evt.goes_class) }}>
                               {evt.goes_class}
