@@ -51,11 +51,12 @@ export default function Dashboard() {
   });
 
   /* ── GOES-18 live mode ───────────────────────────────────────────────── */
-  const [goesMode, setGoesMode]         = useState(false);
-  const [goesData, setGoesData]         = useState<GoesLivePayload | null>(null);
-  const [goesLoading, setGoesLoading]   = useState(false);
-  const [goesError, setGoesError]       = useState(false);
+  const [goesMode, setGoesMode]           = useState(false);
+  const [goesData, setGoesData]           = useState<GoesLivePayload | null>(null);
+  const [goesLoading, setGoesLoading]     = useState(false);
+  const [goesError, setGoesError]         = useState(false);
   const [goesLastFetch, setGoesLastFetch] = useState<Date | null>(null);
+  const [goesCountdown, setGoesCountdown] = useState(90);
 
   const fetchGoes = useCallback(async () => {
     setGoesLoading(true);
@@ -79,6 +80,17 @@ export default function Dashboard() {
     const id = setInterval(fetchGoes, 90_000);
     return () => clearInterval(id);
   }, [goesMode, fetchGoes]);
+
+  /* ── Countdown ticker ────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!goesMode || !goesLastFetch) return;
+    setGoesCountdown(90);
+    const tick = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - goesLastFetch.getTime()) / 1000);
+      setGoesCountdown(Math.max(0, 90 - elapsed));
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [goesMode, goesLastFetch]);
 
   /* ── Active data: GOES or demo ───────────────────────────────────────── */
   const activeEvents   = goesMode && goesData ? goesData.events   : (eventsData?.events ?? []);
@@ -146,7 +158,26 @@ export default function Dashboard() {
                 <span>Soft: {goesData.bands.soft}</span>
                 <span>·</span>
                 <span>Hard: {goesData.bands.hard}</span>
-                {goesLastFetch && <><span>·</span><span>Updated {goesLastFetch.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></>}
+                {goesLastFetch && (
+                  <>
+                    <span>·</span>
+                    <span>Updated {goesLastFetch.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    <span>·</span>
+                    <span className="flex items-center gap-1">
+                      <span className={goesCountdown < 15 ? "text-amber-400" : "text-muted-foreground"}>
+                        {goesCountdown > 0 ? `next refresh in ${goesCountdown}s` : "refreshing…"}
+                      </span>
+                      {goesCountdown > 0 && (
+                        <span className="inline-block w-10 h-0.5 bg-border rounded overflow-hidden">
+                          <span
+                            className="block h-full bg-[#00D4FF] transition-all duration-1000"
+                            style={{ width: `${(goesCountdown / 90) * 100}%` }}
+                          />
+                        </span>
+                      )}
+                    </span>
+                  </>
+                )}
               </motion.div>
             )}
             {goesMode && goesError && (

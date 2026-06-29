@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { useGetFlareEvents } from "@workspace/api-client-react";
 import { format, parseISO } from "date-fns";
@@ -6,8 +6,52 @@ import { formatSI } from "@/utils/formatFlux";
 import { getGoesColor } from "@/utils/goesClass";
 import { Download, ChevronDown, ChevronRight, BarChart2, Satellite, FlaskConical, RefreshCw, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
+
+/* ── Class distribution summary ─────────────────────────────────────── */
+const CLASS_META = [
+  { letter: "X", color: "#9333EA", threshold: 1e-4 },
+  { letter: "M", color: "#EF4444", threshold: 1e-5 },
+  { letter: "C", color: "#F59E0B", threshold: 1e-6 },
+  { letter: "B", color: "#22C55E", threshold:    0 },
+];
+
+function ClassDistribution({ events }: { events: any[] }) {
+  const dist = useMemo(() => {
+    const counts: Record<string, number> = { X: 0, M: 0, C: 0, B: 0 };
+    events.forEach(e => {
+      const letter = (e.goes_class?.[0] ?? "B").toUpperCase();
+      if (letter in counts) counts[letter]++;
+    });
+    return CLASS_META.map(m => ({ name: m.letter, value: counts[m.letter], color: m.color }));
+  }, [events]);
+
+  const total = events.length;
+  if (total === 0) return null;
+
+  return (
+    <div className="flex items-center gap-4 mb-5 bg-card border border-border rounded px-5 py-3">
+      <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest shrink-0">Class Distribution</span>
+      <div className="flex gap-3 flex-1">
+        {dist.map(d => (
+          <div key={d.name} className="flex items-center gap-2">
+            <span className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold text-black"
+              style={{ backgroundColor: d.color }}>{d.name}</span>
+            <span className="font-mono text-sm text-foreground">{d.value}</span>
+            <span className="font-mono text-[10px] text-muted-foreground">({total > 0 ? Math.round(d.value / total * 100) : 0}%)</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex h-2 rounded overflow-hidden w-32 shrink-0">
+        {dist.filter(d => d.value > 0).map(d => (
+          <div key={d.name} style={{ width: `${(d.value / total) * 100}%`, backgroundColor: d.color }} />
+        ))}
+      </div>
+      <span className="font-mono text-xs text-muted-foreground shrink-0">{total} total</span>
+    </div>
+  );
+}
 
 /* ── NOAA archive event type ─────────────────────────────────────── */
 interface NoaaEvent {
@@ -117,6 +161,8 @@ export default function Events() {
 
         {/* ── Detected tab ─────────────────────────────────────────── */}
         {tab === "detected" && (
+          <>
+          <ClassDistribution events={events} />
           <div className="bg-card border border-border shadow-[0_0_20px_rgba(0,212,255,0.05)] rounded overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -214,6 +260,7 @@ export default function Events() {
               </table>
             </div>
           </div>
+          </>
         )}
 
         {/* ── NOAA Archive tab ──────────────────────────────────────── */}
