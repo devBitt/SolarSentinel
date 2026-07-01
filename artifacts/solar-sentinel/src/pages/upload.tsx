@@ -107,12 +107,13 @@ export default function Upload() {
     if (!file) return;
     const formData = new FormData();
     formData.append("file", file);
-    uploadData({ data: formData }, {
+    uploadData({ body: formData }, {
       onSuccess: (res: any) => {
         toast({ title: "Pipeline Complete", description: `${res.rows} rows · ${res.events_detected} flares detected` });
         setResult({ rows: res.rows, events: res.events_detected, detected_format: res.detected_format, columns_mapped: res.columns_mapped });
         setFile(null);
         setSniffed(null);
+        localStorage.setItem("solar_sentinel_source_mode", "demo");
       },
       onError: (err: any) => {
         const msg = err?.response?.data?.hint ?? err?.response?.data?.error ?? "Failed to process file.";

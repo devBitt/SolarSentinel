@@ -7,6 +7,7 @@ interface FlareEvent {
   peak_solexs_flux: number;
   detection_confidence: number;
   start_time: string;
+  peak_time: string; // ✅ FIX (Bug 4): make sure this is used for display, not start_time
 }
 
 interface ActiveRegion {
@@ -33,12 +34,41 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// ✅ FIX (Bug 3): Only "significant" flares should appear as active regions
+// on the globe / sidebar. We define "significant" as:
+//   - class letter is C, M, or X (not B — background noise)
+//   - AND (class letter is M or X) OR (class is C with magnitude >= 5, i.e. C5+)
+//   - AND detection_confidence >= 0.5 (50%)
+// Adjust thresholds here if you want a different cutoff.
+// ─────────────────────────────────────────────────────────────────────────
+function isSignificantFlare(evt: FlareEvent): boolean {
+  const letter = evt.goes_class?.[0]?.toUpperCase();
+  if (!letter) return false;
+
+  // Always exclude B-class (background, no visible effect)
+  if (letter === "B") return false;
+
+  // M and X class are always significant regardless of magnitude
+  if (letter === "M" || letter === "X") {
+    return evt.detection_confidence >= 0.5;
+  }
+
+  // For C-class, only show if magnitude is C5.0 or higher
+  if (letter === "C") {
+    const magnitude = parseFloat(evt.goes_class.slice(1));
+    return magnitude >= 5.0 && evt.detection_confidence >= 0.5;
+  }
+
+  return false;
+}
+
 function eventsToRegions(events: FlareEvent[]): ActiveRegion[] {
   return events.map((evt, i) => {
     const t = new Date(evt.start_time).getTime();
-    const seed  = (t % 100000) / 100000;
+    const seed = (t % 100000) / 100000;
     const seed2 = ((i * 137.508 + seed * 360) % 360) / 360;
-    const phi   = (seed * 2 - 1) * Math.PI * 0.38;
+    const phi = (seed * 2 - 1) * Math.PI * 0.38;
     const theta = seed2 * Math.PI * 2;
     const letter = evt.goes_class?.[0];
     const radius = letter === "X" ? 14 : letter === "M" ? 10 : 7;
@@ -73,28 +103,28 @@ function drawSolar(
 
   // Corona glow
   const corona = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.55);
-  corona.addColorStop(0,   "rgba(255,140,30,0.22)");
+  corona.addColorStop(0, "rgba(255,140,30,0.22)");
   corona.addColorStop(0.4, "rgba(255,100,10,0.08)");
-  corona.addColorStop(1,   "rgba(0,0,0,0)");
+  corona.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = corona;
   ctx.beginPath(); ctx.arc(cx, cy, R * 1.55, 0, Math.PI * 2); ctx.fill();
 
   // Atmosphere ring
   const atmo = ctx.createRadialGradient(cx, cy, R * 0.98, cx, cy, R * 1.12);
-  atmo.addColorStop(0,   "rgba(255,180,60,0.35)");
-  atmo.addColorStop(1,   "rgba(255,80,0,0)");
+  atmo.addColorStop(0, "rgba(255,180,60,0.35)");
+  atmo.addColorStop(1, "rgba(255,80,0,0)");
   ctx.fillStyle = atmo;
   ctx.beginPath(); ctx.arc(cx, cy, R * 1.12, 0, Math.PI * 2); ctx.fill();
 
   // Solar disk — limb darkening
   const solar = ctx.createRadialGradient(cx - R * 0.12, cy - R * 0.12, R * 0.05, cx, cy, R);
-  solar.addColorStop(0,    "#FFF8D0");
+  solar.addColorStop(0, "#FFF8D0");
   solar.addColorStop(0.12, "#FFDD60");
   solar.addColorStop(0.38, "#FFB020");
   solar.addColorStop(0.62, "#E06000");
   solar.addColorStop(0.80, "#B03000");
   solar.addColorStop(0.92, "#701000");
-  solar.addColorStop(1,    "#380600");
+  solar.addColorStop(1, "#380600");
   ctx.fillStyle = solar;
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
 
@@ -122,9 +152,9 @@ function drawSolar(
     if (Math.hypot(sx - cx, sy - cy) > R * 0.82) continue;
     const sr = 2 + rng() * 5;
     const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr * 2.5);
-    sg.addColorStop(0,   "rgba(15,5,0,0.75)");
+    sg.addColorStop(0, "rgba(15,5,0,0.75)");
     sg.addColorStop(0.5, "rgba(40,10,0,0.35)");
-    sg.addColorStop(1,   "rgba(0,0,0,0)");
+    sg.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = sg;
     ctx.beginPath(); ctx.arc(sx, sy, sr * 2.5, 0, Math.PI * 2); ctx.fill();
   }
@@ -138,39 +168,39 @@ function drawSolar(
 
     const isHov = reg.event.id === hoveredId;
     const pulse = (Math.sin(t * 2.8 + idx * 1.3) * 0.5 + 0.5);
-    const sc    = isHov ? 1.5 + pulse * 0.35 : 1 + pulse * 0.2;
-    const r     = reg.radius * sc;
+    const sc = isHov ? 1.5 + pulse * 0.35 : 1 + pulse * 0.2;
+    const r = reg.radius * sc;
     const [rr, gg, bb] = hexToRgb(reg.color);
 
     // Outer glow halo
-    const haloR  = r * (isHov ? 3.2 : 2.4);
-    const haloG  = ctx.createRadialGradient(x, y, 0, x, y, haloR);
-    haloG.addColorStop(0,   `rgba(${rr},${gg},${bb},${isHov ? 0.6 : 0.35})`);
+    const haloR = r * (isHov ? 3.2 : 2.4);
+    const haloG = ctx.createRadialGradient(x, y, 0, x, y, haloR);
+    haloG.addColorStop(0, `rgba(${rr},${gg},${bb},${isHov ? 0.6 : 0.35})`);
     haloG.addColorStop(0.5, `rgba(${rr},${gg},${bb},${isHov ? 0.2 : 0.1})`);
-    haloG.addColorStop(1,   `rgba(${rr},${gg},${bb},0)`);
+    haloG.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
     ctx.fillStyle = haloG;
     ctx.beginPath(); ctx.arc(x, y, haloR, 0, Math.PI * 2); ctx.fill();
 
     // Pulsing ring
-    const ringR   = r * (1.6 + pulse * (isHov ? 1.0 : 0.5));
+    const ringR = r * (1.6 + pulse * (isHov ? 1.0 : 0.5));
     const ringAlpha = (0.25 + pulse * 0.35) * (isHov ? 1.0 : 0.6);
     ctx.strokeStyle = `rgba(${rr},${gg},${bb},${ringAlpha})`;
-    ctx.lineWidth   = isHov ? 2 : 1.2;
+    ctx.lineWidth = isHov ? 2 : 1.2;
     ctx.beginPath(); ctx.arc(x, y, ringR, 0, Math.PI * 2); ctx.stroke();
 
     // Core dot
     const dotG = ctx.createRadialGradient(x - r * 0.2, y - r * 0.2, 0, x, y, r);
     dotG.addColorStop(0, `rgba(255,255,255,0.9)`);
     dotG.addColorStop(0.3, `rgba(${rr},${gg},${bb},1)`);
-    dotG.addColorStop(1,   `rgba(${Math.max(0,rr-40)},${Math.max(0,gg-40)},${Math.max(0,bb-40)},0.9)`);
+    dotG.addColorStop(1, `rgba(${Math.max(0, rr - 40)},${Math.max(0, gg - 40)},${Math.max(0, bb - 40)},0.9)`);
     ctx.fillStyle = dotG;
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
 
     // Class label
     if (isHov || reg.event.goes_class[0] !== "B") {
-      ctx.font       = `bold ${Math.round(r * 1.1)}px 'JetBrains Mono', monospace`;
-      ctx.fillStyle  = "rgba(255,255,255,0.95)";
-      ctx.textAlign  = "center";
+      ctx.font = `bold ${Math.round(r * 1.1)}px 'JetBrains Mono', monospace`;
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(reg.event.goes_class, x, y);
     }
@@ -184,12 +214,17 @@ interface SolarGlobeCanvasProps {
 }
 
 function SolarGlobeCanvas({ events, hoveredId, onHover }: SolarGlobeCanvasProps) {
-  const canvasRef    = useRef<HTMLCanvasElement>(null);
-  const hovIdRef     = useRef(hoveredId);
-  hovIdRef.current   = hoveredId;
-  const onHoverRef   = useRef(onHover);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hovIdRef = useRef(hoveredId);
+  hovIdRef.current = hoveredId;
+  const onHoverRef = useRef(onHover);
   onHoverRef.current = onHover;
-  const regionsRef   = useRef(eventsToRegions(events));
+  const regionsRef = useRef(eventsToRegions(events));
+
+  // ✅ Keep regionsRef in sync if `events` prop changes after mount
+  useEffect(() => {
+    regionsRef.current = eventsToRegions(events);
+  }, [events]);
 
   useEffect(() => {
     const cv = canvasRef.current;
@@ -208,7 +243,7 @@ function SolarGlobeCanvas({ events, hoveredId, onHover }: SolarGlobeCanvasProps)
     const getGeom = () => {
       const W = cv.width, H = cv.height;
       const cx = W * 0.5, cy = H * 0.5;
-      const R  = Math.min(W, H) * 0.38;
+      const R = Math.min(W, H) * 0.38;
       return { W, H, cx, cy, R };
     };
 
@@ -224,8 +259,8 @@ function SolarGlobeCanvas({ events, hoveredId, onHover }: SolarGlobeCanvasProps)
 
     const findRegion = (mx: number, my: number): string | null => {
       const rect = cv.getBoundingClientRect();
-      const px   = (mx - rect.left) * (cv.width  / rect.width);
-      const py   = (my - rect.top)  * (cv.height / rect.height);
+      const px = (mx - rect.left) * (cv.width / rect.width);
+      const py = (my - rect.top) * (cv.height / rect.height);
       const { cx, cy, R } = getGeom();
       let best: string | null = null;
       let bestDist = Infinity;
@@ -247,12 +282,12 @@ function SolarGlobeCanvas({ events, hoveredId, onHover }: SolarGlobeCanvasProps)
       onHoverRef.current(findRegion(e.clientX, e.clientY));
     };
     const onDown = (e: MouseEvent) => { isDragging = true; lastMx = e.clientX; };
-    const onUp   = () => { isDragging = false; };
+    const onUp = () => { isDragging = false; };
 
     const onResize = () => {
       const parent = cv.parentElement;
       if (!parent) return;
-      cv.width  = parent.clientWidth;
+      cv.width = parent.clientWidth;
       cv.height = parent.clientHeight;
     };
 
@@ -290,7 +325,13 @@ interface SolarGlobePanelProps {
 export function SolarGlobePanel({ events, sourceLabel }: SolarGlobePanelProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const onHover = useCallback((id: string | null) => setHoveredId(id), []);
-  const hoveredEvent = events.find(e => e.id === hoveredId) ?? null;
+
+  // ✅ FIX (Bug 3): filter to significant flares only, BEFORE rendering markers
+  // and the sidebar list. This replaces the previous behavior of showing
+  // every single detected event regardless of class/confidence.
+  const significantEvents = events.filter(isSignificantFlare);
+
+  const hoveredEvent = significantEvents.find(e => e.id === hoveredId) ?? null;
 
   return (
     <motion.div
@@ -307,8 +348,10 @@ export function SolarGlobePanel({ events, sourceLabel }: SolarGlobePanelProps) {
           <span className="text-muted-foreground text-xs font-mono">— Heliographic View</span>
           {sourceLabel && (
             <span className="ml-2 text-[9px] font-mono px-1.5 py-0.5 rounded border"
-              style={{ color: sourceLabel === "GOES-18 LIVE" ? "#00D4FF" : "#F5A623",
-                       borderColor: sourceLabel === "GOES-18 LIVE" ? "#00D4FF" : "#F5A623" }}>
+              style={{
+                color: sourceLabel === "GOES-18 LIVE" ? "#00D4FF" : "#F5A623",
+                borderColor: sourceLabel === "GOES-18 LIVE" ? "#00D4FF" : "#F5A623"
+              }}>
               {sourceLabel === "GOES-18 LIVE" ? "LIVE" : "DEMO"}
             </span>
           )}
@@ -319,7 +362,8 @@ export function SolarGlobePanel({ events, sourceLabel }: SolarGlobePanelProps) {
       <div className="flex flex-col md:flex-row">
         {/* Globe canvas */}
         <div className="relative flex-1 bg-[#020810]" style={{ minHeight: 360 }}>
-          <SolarGlobeCanvas events={events} hoveredId={hoveredId} onHover={onHover} />
+          {/* ✅ pass filtered events into canvas too, so markers match sidebar */}
+          <SolarGlobeCanvas events={significantEvents} hoveredId={hoveredId} onHover={onHover} />
 
           {/* Hover tooltip */}
           {hoveredEvent && (
@@ -338,23 +382,29 @@ export function SolarGlobePanel({ events, sourceLabel }: SolarGlobePanelProps) {
                 <span className="text-muted-foreground text-xs font-mono">Active Region</span>
               </div>
               <div className="text-[11px] font-mono text-muted-foreground space-y-0.5">
-                <div>Peak: <span className="text-[#00D4FF]">{hoveredEvent.peak_solexs_flux.toExponential(1)} W/m²</span></div>
+                <div>Peak Flux: <span className="text-[#00D4FF]">{hoveredEvent.peak_solexs_flux.toExponential(1)} W/m²</span></div>
                 <div>Conf: <span className="text-foreground">{(hoveredEvent.detection_confidence * 100).toFixed(0)}%</span></div>
-                <div>Time: <span className="text-foreground">{new Date(hoveredEvent.start_time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" })}</span></div>
+                {/* ✅ FIX (Bug 4): use peak_time, not start_time, since this represents
+                    "when the flare actually peaked", which is what the label promises */}
+                <div>Peak Time: <span className="text-foreground">{new Date(hoveredEvent.peak_time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" })}</span></div>
               </div>
             </motion.div>
           )}
         </div>
 
         {/* Sidebar event list */}
-        <div className="md:w-60 border-t md:border-t-0 md:border-l border-border p-4 flex flex-col gap-2">
-          <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">Detected Regions</p>
-          {events.length === 0 && (
-            <p className="text-xs text-muted-foreground font-mono">No active regions.</p>
+        <div className="md:w-64 border-t md:border-t-0 md:border-l border-border p-4 flex flex-col gap-2">
+          <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">
+            Detected Regions
+            {/* ✅ small UX improvement: show count + filter criteria so it's clear why some events are excluded */}
+            <span className="ml-1 text-muted-foreground/60">(C5.0+ confirmed peaks)</span>
+          </p>
+          {significantEvents.length === 0 && (
+            <p className="text-xs text-muted-foreground font-mono">No significant active regions detected.</p>
           )}
-          {events.map((evt) => {
-            const color  = getRegionColor(evt.goes_class);
-            const isHov  = evt.id === hoveredId;
+          {significantEvents.map((evt) => {
+            const color = getRegionColor(evt.goes_class);
+            const isHov = evt.id === hoveredId;
             return (
               <div
                 key={evt.id}
@@ -371,16 +421,20 @@ export function SolarGlobePanel({ events, sourceLabel }: SolarGlobePanelProps) {
                   style={{ backgroundColor: color, boxShadow: isHov ? `0 0 10px ${color}` : "none" }}
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-mono text-xs font-bold" style={{ color: isHov ? color : undefined }}>
+                  {/* ✅ FIX (Bug 2): added explicit gap-2 + whitespace-nowrap so
+                      class and confidence never visually collide regardless of
+                      container width */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs font-bold whitespace-nowrap" style={{ color: isHov ? color : undefined }}>
                       {evt.goes_class}
                     </span>
-                    <span className="text-muted-foreground font-mono text-[10px]">
+                    <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
                       {(evt.detection_confidence * 100).toFixed(0)}%
                     </span>
                   </div>
+                  {/* ✅ FIX (Bug 4): use peak_time here too, for consistency with tooltip above */}
                   <div className="text-muted-foreground font-mono text-[10px] truncate">
-                    {new Date(evt.start_time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" })}
+                    {new Date(evt.peak_time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" })}
                   </div>
                 </div>
               </div>
@@ -390,6 +444,7 @@ export function SolarGlobePanel({ events, sourceLabel }: SolarGlobePanelProps) {
           <div className="mt-auto pt-3 border-t border-border">
             <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
               Heliographic coordinates estimated from SoLEXS temporal profile. Positions are indicative.
+              Only flares of class C5.0+ with detection confidence ≥ 50% are shown as active regions.
             </p>
           </div>
         </div>

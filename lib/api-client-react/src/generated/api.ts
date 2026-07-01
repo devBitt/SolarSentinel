@@ -780,8 +780,8 @@ export const uploadData = async ( options?: RequestInit): Promise<UploadResult> 
 
 
 export const getUploadDataMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadData>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof uploadData>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadData>>, TError, SecondParameter<typeof customFetch>, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadData>>, TError, SecondParameter<typeof customFetch>, TContext> => {
 
 const mutationKey = ['uploadData'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -793,10 +793,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadData>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadData>>, SecondParameter<typeof customFetch>> = (variables) => {
 
 
-          return  uploadData(requestOptions)
+          return  uploadData({ ...requestOptions, ...variables })
         }
 
 
@@ -814,11 +814,11 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
  * @summary Upload CSV data for analysis
  */
 export const useUploadData = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadData>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadData>>, TError, SecondParameter<typeof customFetch>, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof uploadData>>,
         TError,
-        void,
+        SecondParameter<typeof customFetch>,
         TContext
       > => {
       return useMutation(getUploadDataMutationOptions(options));

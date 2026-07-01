@@ -71,7 +71,7 @@ async function fetchGoesLive() {
   if (goesCache && now - goesCache.ts < 90_000) return goesCache.payload;
 
   const raw: Array<{ time_tag: string; satellite: number; flux: number; energy: string }> =
-    await fetch(GOES_XRAY_URL).then(r => r.json());
+    await fetch(GOES_XRAY_URL).then(r => r.json()) as any;
 
   // Pair long (0.1-0.8nm ≈ SoLEXS soft) and short (0.05-0.4nm ≈ HEL1OS hard) by minute
   const softMap = new Map<string, number>();
@@ -151,8 +151,24 @@ router.get("/data/full", (_req, res) => {
 });
 
 // GET /api/events — all detected flare events
-router.get("/events", (_req, res) => {
-  res.json({ events: getFlareEvents() });
+router.get("/events", async (req, res) => {
+  const source = req.query.source;
+  if (source === "live" || source === "goes") {
+    try {
+      await fetchGoesLive();
+      const events = Array.from(goesEventStore.values())
+        .map(e => e.event)
+        .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+      res.json({ events });
+    } catch {
+      const events = Array.from(goesEventStore.values())
+        .map(e => e.event)
+        .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+      res.json({ events });
+    }
+  } else {
+    res.json({ events: getFlareEvents() });
+  }
 });
 
 // GET /api/forecast — 15-min ahead probability
@@ -216,7 +232,7 @@ router.get("/metrics", (_req, res) => {
 });
 
 /* ── NOAA 7-day flare archive cache (5-minute TTL) ──────────────────────── */
-const NOAA_FLARES_URL = "https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7day.json";
+const NOAA_FLARES_URL = "https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7-day.json";
 let noaaFlareCache: { payload: unknown; ts: number } | null = null;
 
 // GET /api/events/noaa-archive — real NOAA SWPC 7-day flare catalog
@@ -227,31 +243,32 @@ router.get("/events/noaa-archive", async (_req, res) => {
       res.json(noaaFlareCache.payload);
       return;
     }
-    const raw: Array<{
-      event_date: string;
-      start_time: string;
-      peak_time: string;
-      end_time: string;
-      goes_class: string;
-      peak_xrlong: number;
-      peak_xrshort: number;
-      noaa_active_region: number | null;
-    }> = await fetch(NOAA_FLARES_URL).then(r => r.json());
+    const raw: any[] = await fetch(NOAA_FLARES_URL).then(r => r.json()) as any;
 
-    const events = raw.map(e => ({
-      id: `NOAA-${e.start_time.replace(/\D/g, "").slice(0, 12)}`,
-      start_time: e.start_time,
-      peak_time: e.peak_time,
-      end_time: e.end_time,
-      goes_class: e.goes_class,
-      peak_solexs_flux: e.peak_xrlong ?? null,
-      peak_hel1os_flux: e.peak_xrshort ?? null,
-      duration_minutes: e.start_time && e.end_time
-        ? Math.round((new Date(e.end_time).getTime() - new Date(e.start_time).getTime()) / 60000)
-        : null,
-      noaa_active_region: e.noaa_active_region,
-      source: "NOAA SWPC",
-    }));
+    const events = raw.map(e => {
+      const startTime = e.begin_time ?? e.start_time ?? e.time_tag;
+      const peakTime = e.max_time ?? e.peak_time ?? startTime;
+      const endTime = e.end_time ?? peakTime;
+      const goesClass = e.max_class ?? e.goes_class ?? "B1.0";
+      const peakSolexs = e.max_xrlong ?? e.peak_xrlong ?? null;
+      const peakHel1os = e.max_xrshort ?? e.peak_xrshort ?? (e.max_ratio && peakSolexs ? e.max_ratio * peakSolexs : null);
+      const activeRegion = e.noaa_active_region ?? null;
+
+      return {
+        id: `NOAA-${(startTime || "").replace(/\D/g, "").slice(0, 12)}`,
+        start_time: startTime,
+        peak_time: peakTime,
+        end_time: endTime,
+        goes_class: goesClass,
+        peak_solexs_flux: peakSolexs,
+        peak_hel1os_flux: peakHel1os,
+        duration_minutes: startTime && endTime
+          ? Math.round((new Date(endTime).getTime() - new Date(startTime).getTime()) / 60000)
+          : null,
+        noaa_active_region: activeRegion,
+        source: "NOAA SWPC",
+      };
+    });
 
     const payload = { events, count: events.length, source: "NOAA SWPC GOES Primary", fetched_at: new Date().toISOString() };
     noaaFlareCache = { payload, ts: now };

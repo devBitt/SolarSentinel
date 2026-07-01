@@ -70,7 +70,22 @@ interface NoaaEvent {
 type Tab = "detected" | "noaa";
 
 export default function Events() {
-  const { data, isLoading } = useGetFlareEvents();
+  const [goesMode, setGoesMode] = useState(() => {
+    return localStorage.getItem("solar_sentinel_source_mode") === "live";
+  });
+
+  const { data, isLoading } = useGetFlareEvents({
+    query: {
+      queryKey: ["/api/events", goesMode ? "live" : "demo"],
+      queryFn: async () => {
+        const url = `/api/events${goesMode ? "?source=goes" : ""}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Failed to fetch events");
+        return res.json();
+      }
+    }
+  });
+
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("detected");
   const [noaaEvents, setNoaaEvents] = useState<NoaaEvent[]>([]);
@@ -78,7 +93,14 @@ export default function Events() {
   const [noaaError, setNoaaError] = useState(false);
   const [noaaFetched, setNoaaFetched] = useState(false);
 
-  const events = data?.events || [];
+  const events = useMemo(() => {
+    const rawEvents = data?.events || [];
+    return [...rawEvents].sort((a: any, b: any) => new Date(b.peak_time).getTime() - new Date(a.peak_time).getTime());
+  }, [data?.events]);
+
+  const sortedNoaaEvents = useMemo(() => {
+    return [...noaaEvents].sort((a: any, b: any) => new Date(b.peak_time).getTime() - new Date(a.peak_time).getTime());
+  }, [noaaEvents]);
 
   /* ── Fetch NOAA archive on tab switch ─────────────────────────── */
   useEffect(() => {
@@ -96,7 +118,7 @@ export default function Events() {
   }, [tab, noaaFetched]);
 
   const handleExport = () => {
-    const source = tab === "detected" ? events : noaaEvents;
+    const source = tab === "detected" ? events : sortedNoaaEvents;
     const headers = ["ID", "Start", "Peak", "End", "Class", "Peak Soft (W/m²)", "Duration (min)", "Source"];
     const csvContent = [
       headers.join(","),
@@ -147,10 +169,53 @@ export default function Events() {
           </Button>
         </div>
 
+        {/* ── Data source toggle ──────────────────────────────────────── */}
+        {tab === "detected" && (
+          <div className="flex items-center gap-3 mb-6 p-2 rounded border border-border bg-card/60 backdrop-blur-sm max-w-fit">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[#00D4FF]/70 pl-2">
+              [SRC.SELECT] X-RAY FEED:
+            </span>
+
+            {/* Demo button */}
+            <button
+              onClick={() => {
+                setGoesMode(false);
+                localStorage.setItem("solar_sentinel_source_mode", "demo");
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-mono transition-all duration-200 cursor-pointer"
+              style={{
+                backgroundColor: !goesMode ? "rgba(245,166,35,0.15)" : "transparent",
+                borderColor: !goesMode ? "#F5A623" : "rgba(26,46,69,0.8)",
+                color: !goesMode ? "#F5A623" : "#6B8FA8",
+              }}
+            >
+              <FlaskConical className="w-3.5 h-3.5" />
+              DEMO (Synthetic)
+            </button>
+
+            {/* GOES-18 live button */}
+            <button
+              onClick={() => {
+                setGoesMode(true);
+                localStorage.setItem("solar_sentinel_source_mode", "live");
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-mono transition-all duration-200 cursor-pointer"
+              style={{
+                backgroundColor: goesMode ? "rgba(0,212,255,0.12)" : "transparent",
+                borderColor: goesMode ? "#00D4FF" : "rgba(26,46,69,0.8)",
+                color: goesMode ? "#00D4FF" : "#6B8FA8",
+              }}
+            >
+              <Satellite className="w-3.5 h-3.5" />
+              GOES-18 LIVE (Real)
+            </button>
+          </div>
+        )}
+
         {/* ── Tabs ─────────────────────────────────────────────────── */}
         <div className="flex items-center gap-3 mb-5">
           <TabButton id="detected" label="Detected (Algorithm)" icon={FlaskConical} count={events.length} />
-          <TabButton id="noaa" label="NOAA SWPC Archive (Real)" icon={Satellite} count={noaaFetched ? noaaEvents.length : undefined} />
+          <TabButton id="noaa" label="NOAA SWPC Archive (Real)" icon={Satellite} count={noaaFetched ? sortedNoaaEvents.length : undefined} />
           {tab === "noaa" && (
             <span className="ml-auto text-[10px] font-mono text-muted-foreground flex items-center gap-1">
               <ExternalLink className="w-3 h-3" />
@@ -282,14 +347,14 @@ export default function Events() {
                     <Satellite className="w-4 h-4 text-[#00D4FF]" />
                     <span className="text-[#00D4FF] font-semibold">Real verified flares</span>
                     <span>from NOAA GOES Primary satellite · Last 7 days ·</span>
-                    <span className="text-foreground">{noaaEvents.length} events</span>
+                    <span className="text-foreground">{sortedNoaaEvents.length} events</span>
                     <span className="ml-auto">
                       <button onClick={() => setNoaaFetched(false)} className="flex items-center gap-1 hover:text-foreground transition-colors">
                         <RefreshCw className="w-3 h-3" /> Refresh
                       </button>
                     </span>
                   </div>
-                  {noaaEvents.length === 0 ? (
+                  {sortedNoaaEvents.length === 0 ? (
                     <div className="p-12 text-center font-mono text-sm text-muted-foreground">
                       No flares detected by NOAA in the last 7 days. The Sun is quiet.
                     </div>
@@ -298,9 +363,9 @@ export default function Events() {
                       <table className="w-full text-left border-collapse">
                         <thead>
                           <tr className="bg-muted border-b border-border text-muted-foreground font-mono text-xs uppercase tracking-wider">
-                            <th className="p-4 font-medium">Start (UTC)</th>
-                            <th className="p-4 font-medium">Peak (UTC)</th>
-                            <th className="p-4 font-medium">End (UTC)</th>
+                            <th className="p-4 font-medium">Start</th>
+                            <th className="p-4 font-medium">Peak</th>
+                            <th className="p-4 font-medium">End</th>
                             <th className="p-4 font-medium">Class</th>
                             <th className="p-4 font-medium">Peak Soft (W/m²)</th>
                             <th className="p-4 font-medium">Duration</th>
@@ -308,11 +373,11 @@ export default function Events() {
                           </tr>
                         </thead>
                         <tbody>
-                          {noaaEvents.map((evt, i) => (
+                          {sortedNoaaEvents.map((evt, i) => (
                             <tr key={evt.id} className={`${i % 2 === 0 ? "bg-[#0D1B2A]" : "bg-[#101F30]"} border-b border-border/50 font-mono text-sm`}>
-                              <td className="p-4 whitespace-nowrap">{format(parseISO(evt.start_time), "MM-dd HH:mm")}</td>
-                              <td className="p-4 whitespace-nowrap">{format(parseISO(evt.peak_time), "HH:mm:ss")}</td>
-                              <td className="p-4 whitespace-nowrap">{format(parseISO(evt.end_time), "HH:mm:ss")}</td>
+                              <td className="p-4 whitespace-nowrap">{format(parseISO(evt.start_time), "yyyy-MM-dd HH:mm")}</td>
+                              <td className="p-4 whitespace-nowrap">{format(parseISO(evt.peak_time), "yyyy-MM-dd HH:mm")}</td>
+                              <td className="p-4 whitespace-nowrap">{format(parseISO(evt.end_time), "yyyy-MM-dd HH:mm")}</td>
                               <td className="p-4">
                                 <span className="px-2.5 py-1 rounded-full text-xs font-bold tracking-widest text-black" style={{ backgroundColor: getGoesColor(evt.goes_class) }}>
                                   {evt.goes_class}

@@ -53,7 +53,6 @@ function seededRng(seed: number) {
 }
 
 function gaussianNoise(rng: () => number, sigma: number): number {
-  // Box-Muller transform
   const u1 = Math.max(rng(), 1e-10);
   const u2 = rng();
   return sigma * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
@@ -80,6 +79,8 @@ function addFlare(
   }
 }
 
+// NOTE: Demo/synthetic data generation — left untouched per your request.
+// Only used in Demo mode, not Live mode.
 export function generateMockData(): Array<{ timestamp: string; solexs_flux: number; hel1os_flux: number }> {
   const NUM_POINTS = 1440;
   const startTime = new Date("2024-10-15T00:00:00Z");
@@ -88,16 +89,11 @@ export function generateMockData(): Array<{ timestamp: string; solexs_flux: numb
   const soft = new Array(NUM_POINTS).fill(3e-7);
   const hard = new Array(NUM_POINTS).fill(1e-5);
 
-  // B-class at hour 3 (minute 180)
   addFlare(soft, hard, 180, 3, 10, 2e-7, 5e-6);
-  // C3.2 at hour 8 (minute 480)
   addFlare(soft, hard, 480, 5, 15, 3e-6, 8e-5);
-  // M5.4 at hour 15 (minute 900)
   addFlare(soft, hard, 900, 8, 25, 5e-5, 2e-3);
-  // X1.1 at hour 21 (minute 1260)
   addFlare(soft, hard, 1260, 6, 40, 1e-4, 5e-3);
 
-  // Add Gaussian noise (~5% sigma)
   for (let i = 0; i < NUM_POINTS; i++) {
     soft[i] = Math.max(soft[i] + gaussianNoise(rng, soft[i] * 0.05), 1e-9);
     hard[i] = Math.max(hard[i] + gaussianNoise(rng, hard[i] * 0.05), 1e-7);
@@ -117,7 +113,6 @@ function gradient(arr: number[]): number[] {
   const g = new Array(arr.length).fill(0);
   if (arr.length === 0) return g;
   if (arr.length === 1) return g;
-  // Central differences for interior, forward/backward for edges
   g[0] = arr[1] - arr[0];
   g[arr.length - 1] = arr[arr.length - 1] - arr[arr.length - 2];
   for (let i = 1; i < arr.length - 1; i++) {
@@ -177,6 +172,21 @@ export function computeFeatures(raw: Array<{ timestamp: string; solexs_flux: num
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// ✅ FIX: detectFlares() feeds BOTH Live and Demo mode (Dashboard,
+// SolarGlobe, EventLog all read its output). The confidence formula
+// previously rewarded spectral hardness/flux ratio almost independent of
+// actual flare strength, so a weak C-class event could show the same
+// ~56% confidence as a much stronger flare — this is why your screenshots
+// kept showing "C9.5 / 56%" repeatedly, looking like a stuck/fake value.
+// It was real output, just poorly correlated with severity.
+//
+// New formula: confidence now scales primarily off goes_class strength
+// (class letter + magnitude within class), with hardness as a small bonus
+// only — so confidence and class badge are now visually consistent.
+// peak_time itself was already correct here (data[peakIdx].timestamp);
+// the remaining peak_time display bug lives in SolarGlobe.tsx (see that file).
+// ─────────────────────────────────────────────────────────────────────────
 export function detectFlares(data: FluxDataPoint[]): FlareEvent[] {
   const THRESHOLD_SOFT = 1e-6;
   const THRESHOLD_DERIV = 5e-9;
@@ -196,14 +206,12 @@ export function detectFlares(data: FluxDataPoint[]): FlareEvent[] {
       }
     } else {
       if (row.solexs_flux < THRESHOLD_SOFT * 0.5 || i === data.length - 1) {
-        // Find peak in window
         let peakIdx = startIdx;
         for (let j = startIdx; j <= i; j++) {
           if (data[j].solexs_flux > data[peakIdx].solexs_flux) peakIdx = j;
         }
         const peakFlux = data[peakIdx].solexs_flux;
 
-        // GOES classification
         let goesLetter: string;
         if (peakFlux >= 1e-4) goesLetter = "X";
         else if (peakFlux >= 1e-5) goesLetter = "M";
@@ -215,8 +223,16 @@ export function detectFlares(data: FluxDataPoint[]): FlareEvent[] {
 
         const peakRow = data[peakIdx];
         const sh = peakRow.spectral_hardness ?? 0;
-        const fr = peakRow.flux_ratio ?? 0;
-        const confidence = Math.min(0.5 + Math.abs(sh) * 0.05 + Math.min(fr, 10000) * 0.000001, 0.99);
+
+        // ✅ FIX: confidence now scales with actual flare strength.
+        const classBase =
+          goesLetter === "X" ? 0.85 :
+            goesLetter === "M" ? 0.70 :
+              goesLetter === "C" ? 0.45 :
+                0.25; // B-class
+        const magnitudeBonus = Math.min(mantissa / 10, 1) * 0.10; // up to +10%
+        const hardnessBonus = Math.min(Math.abs(sh) * 0.03, 0.05); // up to +5%
+        const confidence = Math.min(classBase + magnitudeBonus + hardnessBonus, 0.99);
 
         const fluxDerivContrib = 0.42;
         const fluxRatioContrib = 0.28;
